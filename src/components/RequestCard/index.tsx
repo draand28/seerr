@@ -92,13 +92,6 @@ const RequestCardError = ({ requestData }: RequestCardErrorProps) => {
       : []
   );
 
-  const deleteRequest = async () => {
-    await axios.delete(`/api/v1/media/${requestData?.media.id}`);
-    mutate('/api/v1/media?filter=allavailable&take=20&sort=mediaAdded');
-    mutate('/api/v1/request?filter=all&take=10&sort=modified&skip=0');
-    mutate('/api/v1/request/count');
-  };
-
   return (
     <div
       className="relative flex w-72 overflow-hidden rounded-xl bg-gray-800 p-4 text-gray-400 shadow ring-1 ring-red-500 sm:w-96"
@@ -182,34 +175,6 @@ const RequestCardError = ({ requestData }: RequestCardErrorProps) => {
                 </div>
               </>
             )}
-            <div className="flex flex-1 items-end space-x-2">
-              {hasPermission(Permission.MANAGE_REQUESTS) &&
-                requestData?.media.id && (
-                  <>
-                    <Button
-                      buttonType="danger"
-                      buttonSize="sm"
-                      className="mt-4 hidden sm:block"
-                      onClick={() => deleteRequest()}
-                    >
-                      <TrashIcon />
-                      <span>{intl.formatMessage(globalMessages.delete)}</span>
-                    </Button>
-                    <Tooltip
-                      content={intl.formatMessage(messages.deleterequest)}
-                    >
-                      <Button
-                        buttonType="danger"
-                        buttonSize="sm"
-                        className="mt-4 sm:hidden"
-                        onClick={() => deleteRequest()}
-                      >
-                        <TrashIcon />
-                      </Button>
-                    </Tooltip>
-                  </>
-                )}
-            </div>
           </div>
         </div>
       </div>
