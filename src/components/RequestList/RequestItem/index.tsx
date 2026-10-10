@@ -62,21 +62,11 @@ const isMovie = (movie: MovieDetails | TvDetails): movie is MovieDetails => {
 
 interface RequestItemErrorProps {
   requestData?: NonFunctionProperties<MediaRequest>;
-  revalidateList: () => void;
 }
 
-const RequestItemError = ({
-  requestData,
-  revalidateList,
-}: RequestItemErrorProps) => {
+const RequestItemError = ({ requestData }: RequestItemErrorProps) => {
   const intl = useIntl();
   const { hasPermission } = useUser();
-
-  const deleteRequest = async () => {
-    await axios.delete(`/api/v1/media/${requestData?.media.id}`);
-    revalidateList();
-    mutate('/api/v1/request/count');
-  };
 
   const { mediaUrl: plexUrl, mediaUrl4k: plexUrl4k } = useDeepLinks({
     mediaUrl: requestData?.media?.mediaUrl,
@@ -277,18 +267,6 @@ const RequestItemError = ({
           )}
         </div>
       </div>
-      <div className="z-10 mt-4 flex w-full flex-col justify-center pl-4 pr-4 xl:mt-0 xl:w-96 xl:items-end xl:pl-0">
-        {hasPermission(Permission.MANAGE_REQUESTS) && requestData?.media.id && (
-          <Button
-            className="w-full"
-            buttonType="danger"
-            onClick={() => deleteRequest()}
-          >
-            <TrashIcon />
-            <span>{intl.formatMessage(messages.deleterequest)}</span>
-          </Button>
-        )}
-      </div>
     </div>
   );
 };
@@ -409,10 +387,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
 
   if (!title || !requestData) {
     return (
-      <RequestItemError
-        requestData={requestData}
-        revalidateList={revalidateList}
-      />
+      <RequestItemError requestData={requestData} />
     );
   }
 
@@ -716,31 +691,20 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
               </Button>
             )}
           {requestData.status !== MediaRequestStatus.PENDING &&
+            request.canRemove &&
             (canManageRequests || canManageOwnRequests) && (
-              <>
-                <ConfirmButton
-                  onClick={() => deleteRequest()}
-                  confirmText={intl.formatMessage(globalMessages.areyousure)}
-                  className="w-full"
-                >
-                  <TrashIcon />
-                  <span>{intl.formatMessage(messages.deleterequest)}</span>
-                </ConfirmButton>
-                {request.canRemove && (
-                  <ConfirmButton
-                    onClick={() => deleteMediaFile()}
-                    confirmText={intl.formatMessage(globalMessages.areyousure)}
-                    className="w-full"
-                  >
-                    <TrashIcon />
-                    <span>
-                      {intl.formatMessage(messages.removearr, {
-                        arr: request.type === 'movie' ? 'Radarr' : 'Sonarr',
-                      })}
-                    </span>
-                  </ConfirmButton>
-                )}
-              </>
+              <ConfirmButton
+                onClick={() => deleteMediaFile()}
+                confirmText={intl.formatMessage(globalMessages.areyousure)}
+                className="w-full"
+              >
+                <TrashIcon />
+                <span>
+                  {intl.formatMessage(messages.removearr, {
+                    arr: request.type === 'movie' ? 'Radarr' : 'Sonarr',
+                  })}
+                </span>
+              </ConfirmButton>
             )}
           {requestData.status === MediaRequestStatus.PENDING &&
             hasPermission(Permission.MANAGE_REQUESTS) && (
