@@ -12,7 +12,6 @@ import {
   CheckIcon,
   EyeIcon,
   PencilIcon,
-  TrashIcon,
   UserIcon,
   XMarkIcon,
 } from '@heroicons/react/24/solid';
@@ -61,18 +60,6 @@ const RequestBlock = ({ request, onUpdate }: RequestBlockProps) => {
       onUpdate();
       mutate('/api/v1/request/count');
     }
-    setIsUpdating(false);
-  };
-
-  const deleteRequest = async () => {
-    setIsUpdating(true);
-    await axios.delete(`/api/v1/request/${request.id}`);
-
-    if (onUpdate) {
-      onUpdate();
-      mutate('/api/v1/request/count');
-    }
-
     setIsUpdating(false);
   };
 
@@ -187,17 +174,6 @@ const RequestBlock = ({ request, onUpdate }: RequestBlockProps) => {
                   </Button>
                 </Tooltip>
               </>
-            )}
-            {request.status !== MediaRequestStatus.PENDING && (
-              <Tooltip content={intl.formatMessage(messages.delete)}>
-                <Button
-                  buttonType="danger"
-                  onClick={() => deleteRequest()}
-                  disabled={isUpdating}
-                >
-                  <TrashIcon className="icon-sm" />
-                </Button>
-              </Tooltip>
             )}
           </div>
         </div>
