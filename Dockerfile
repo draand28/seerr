@@ -41,6 +41,7 @@ ARG SOURCE_DATE_EPOCH
 ARG COMMIT_TAG
 ENV NODE_ENV=production
 ENV COMMIT_TAG=${COMMIT_TAG}
+ENV PORT=30357
 
 RUN apk add --no-cache tzdata
 
@@ -74,6 +75,6 @@ COPY --chown=node:node --from=build /app/dist ./dist
 RUN touch config/DOCKER && \
   echo "{\"commitTag\": \"${COMMIT_TAG}\"}" > committag.json
 
-EXPOSE 5055
+EXPOSE 30357
 
 CMD [ "npm", "start" ]
