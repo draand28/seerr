@@ -2,7 +2,9 @@ import Spinner from '@app/assets/spinner.svg';
 import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
+import ConfirmButton from '@app/components/Common/ConfirmButton';
 import Tooltip from '@app/components/Common/Tooltip';
+import MediaSize from '@app/components/MediaSize';
 import RequestModal from '@app/components/RequestModal';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
@@ -46,6 +48,9 @@ const messages = defineMessages('components.RequestCard', {
   editrequest: 'Edit Request',
   cancelrequest: 'Cancel Request',
   deleterequest: 'Delete Request',
+  deleterequestandfiles: 'Delete Request & Files',
+  failedremovemedia: 'Something went wrong while removing the media.',
+  filesize: 'File Size',
   unknowntitle: 'Unknown Title',
 });
 
@@ -241,7 +246,7 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
     data: requestData,
     error: requestError,
     mutate: revalidate,
-  } = useSWR<NonFunctionProperties<MediaRequest>>(
+  } = useSWR<NonFunctionProperties<MediaRequest> & { canRemove?: boolean }>(
     `/api/v1/request/${request.id}`,
     {
       fallbackData: request,
@@ -282,6 +287,36 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
     await axios.delete(`/api/v1/request/${request.id}`);
     mutate('/api/v1/request?filter=all&take=10&sort=modified&skip=0');
     mutate('/api/v1/request/count');
+  };
+
+  const deleteMediaFile = async () => {
+    if (!requestData?.media || !requestData.canRemove) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}`
+      );
+    } catch (e) {
+      if (!axios.isAxiosError(e) || e.response?.status !== 404) {
+        addToast(intl.formatMessage(messages.failedremovemedia), {
+          autoDismiss: true,
+          appearance: 'error',
+        });
+        throw e;
+      }
+    }
+  };
+
+  const deleteRequestAndFiles = async () => {
+    try {
+      await deleteMediaFile();
+    } catch {
+      revalidate();
+      return;
+    }
+    await deleteRequest();
   };
 
   const retryRequest = async () => {
@@ -413,6 +448,14 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
               </Link>
             </div>
           )}
+          <MediaSize
+            mediaId={requestData.media.id}
+            is4k={requestData.is4k}
+            label={intl.formatMessage(messages.filesize)}
+            containerClassName="card-field"
+            labelClassName="card-field-name"
+            className="flex truncate text-sm text-gray-300"
+          />
           {!isMovie(title) && request.seasons.length > 0 && (
             <div className="my-0.5 hidden items-center text-sm sm:my-1 sm:flex">
               <span className="mr-2 font-bold">
@@ -611,6 +654,48 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
                     >
                       <XMarkIcon />
                     </Button>
+                  </Tooltip>
+                </div>
+              )}
+            {requestData.status !== MediaRequestStatus.PENDING &&
+              hasPermission(
+                [Permission.MANAGE_REQUESTS, Permission.MANAGE_OWN_REQUESTS],
+                { type: 'or' }
+              ) &&
+              requestData.requestedBy.id === user?.id && (
+                <div>
+                  <ConfirmButton
+                    buttonSize="sm"
+                    className="hidden sm:block"
+                    onClick={() => deleteRequestAndFiles()}
+                    confirmText={intl.formatMessage(globalMessages.areyousure)}
+                  >
+                    <TrashIcon />
+                    <span>
+                      {intl.formatMessage(
+                        requestData.canRemove
+                          ? messages.deleterequestandfiles
+                          : messages.deleterequest
+                      )}
+                    </span>
+                  </ConfirmButton>
+                  <Tooltip
+                    content={intl.formatMessage(
+                      requestData.canRemove
+                        ? messages.deleterequestandfiles
+                        : messages.deleterequest
+                    )}
+                  >
+                    <ConfirmButton
+                      buttonSize="sm"
+                      className="sm:hidden"
+                      onClick={() => deleteRequestAndFiles()}
+                      confirmText={intl.formatMessage(
+                        globalMessages.areyousure
+                      )}
+                    >
+                      <TrashIcon />
+                    </ConfirmButton>
                   </Tooltip>
                 </div>
               )}

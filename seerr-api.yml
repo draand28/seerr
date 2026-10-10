@@ -6752,7 +6752,7 @@ paths:
           description: Only pending requests can be modified
     delete:
       summary: Delete request
-      description: Removes a request. If the user has the `MANAGE_REQUESTS` permission, any request can be removed. Otherwise, only pending requests can be removed.
+      description: Removes a request. If the user has the `MANAGE_REQUESTS` permission, any request can be removed. If the user has the `MANAGE_OWN_REQUESTS` permission, their own requests can be removed. Otherwise, only pending requests can be removed.
       tags:
         - request
       parameters:
@@ -7358,7 +7358,7 @@ paths:
   /media/{mediaId}/file:
     delete:
       summary: Delete media file
-      description: Removes a media file from radarr/sonarr. The `ADMIN` permission is required to perform this action.
+      description: Removes a media file from radarr/sonarr. The `MANAGE_REQUESTS` permission is required, or `MANAGE_OWN_REQUESTS` when the user is the only requester of the media.
       tags:
         - media
       parameters:
@@ -7379,6 +7379,39 @@ paths:
       responses:
         '204':
           description: Successfully removed media item
+  /media/{mediaId}/size:
+    get:
+      summary: Get media file size
+      description: Returns the total file size (in bytes) of the media as reported by Radarr/Sonarr, or null when the media is not tracked by a configured server.
+      tags:
+        - media
+      parameters:
+        - in: path
+          name: mediaId
+          description: Media ID
+          required: true
+          example: '1'
+          schema:
+            type: string
+        - in: query
+          name: is4k
+          description: Whether to check the 4K service instance (true) or regular service instance (false)
+          required: false
+          example: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Media file size returned in bytes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  size:
+                    type: number
+                    nullable: true
+                    example: 123456789
   /media/{mediaId}/{status}:
     post:
       summary: Update media status

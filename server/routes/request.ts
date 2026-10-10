@@ -247,9 +247,18 @@ requestRoutes.get<Record<string, unknown>, RequestResultsResponse>(
         }
       });
 
-      // add canRemove prop if user has permission
-      if (req.user?.hasPermission(Permission.MANAGE_REQUESTS)) {
+      const canManageRequests =
+        req.user?.hasPermission(Permission.MANAGE_REQUESTS) ?? false;
+      const canManageOwnRequests =
+        req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) ?? false;
+
+      // add canRemove prop if user has permission to manage the request
+      if (canManageRequests || canManageOwnRequests) {
         mappedRequests = mappedRequests.map((r) => {
+          if (!canManageRequests && r.requestedBy?.id !== req.user?.id) {
+            return r;
+          }
+
           switch (r.type) {
             case MediaType.MOVIE: {
               return {
@@ -457,7 +466,17 @@ requestRoutes.get('/:requestId', async (req, res, next) => {
       });
     }
 
-    return res.status(200).json(request);
+    const settings = getSettings();
+    const serviceId = request.is4k
+      ? request.media.serviceId4k
+      : request.media.serviceId;
+    const serviceServers =
+      request.type === MediaType.MOVIE ? settings.radarr : settings.sonarr;
+
+    return res.status(200).json({
+      ...request,
+      canRemove: serviceServers.some((server) => server.id === serviceId),
+    });
   } catch (e) {
     logger.debug('Failed to retrieve request.', {
       label: 'API',
@@ -718,10 +737,18 @@ requestRoutes.delete('/:requestId', async (req, res, next) => {
         relations: { requestedBy: true, modifiedBy: true },
       });
 
+      const isOwner = request.requestedBy.id === req.user?.id;
+      const canManageRequests = req.user?.hasPermission(
+        Permission.MANAGE_REQUESTS
+      );
+      const canManageOwnRequests = req.user?.hasPermission(
+        Permission.MANAGE_OWN_REQUESTS
+      );
+
       if (
-        !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
-        (request.requestedBy.id !== req.user?.id ||
-          request.status !== MediaRequestStatus.PENDING)
+        !canManageRequests &&
+        !(canManageOwnRequests && isOwner) &&
+        !(isOwner && request.status === MediaRequestStatus.PENDING)
       ) {
         return next({
           status: 401,
