@@ -18,6 +18,7 @@ import Tooltip from '@app/components/Common/Tooltip';
 import ExternalLinkBlock from '@app/components/ExternalLinkBlock';
 import IssueModal from '@app/components/IssueModal';
 import ManageSlideOver from '@app/components/ManageSlideOver';
+import MediaSize from '@app/components/MediaSize';
 import MediaSlider from '@app/components/MediaSlider';
 import PersonCard from '@app/components/PersonCard';
 import RequestButton from '@app/components/RequestButton';
@@ -74,6 +75,8 @@ import useSWR from 'swr';
 
 const messages = defineMessages('components.TvDetails', {
   firstAirDate: 'First Air Date',
+  filesize: 'File Size',
+  filesize4k: '4K File Size',
   nextAirDate: 'Next Air Date',
   originallanguage: 'Original Language',
   overview: 'Overview',
@@ -1187,6 +1190,22 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
               <span>{intl.formatMessage(globalMessages.status)}</span>
               <span className="media-fact-value">{data.status}</span>
             </div>
+            <MediaSize
+              mediaId={data.mediaInfo?.id}
+              label={intl.formatMessage(messages.filesize)}
+              containerClassName="media-fact"
+              className="media-fact-value"
+            />
+            {settings.currentSettings.series4kEnabled &&
+              data.mediaInfo?.id && (
+                <MediaSize
+                  mediaId={data.mediaInfo?.id}
+                  is4k
+                  label={intl.formatMessage(messages.filesize4k)}
+                  containerClassName="media-fact"
+                  className="media-fact-value"
+                />
+              )}
             {data.firstAirDate && (
               <div className="media-fact">
                 <span>{intl.formatMessage(messages.firstAirDate)}</span>

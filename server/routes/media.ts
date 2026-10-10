@@ -12,7 +12,7 @@ import type {
   MediaWatchDataResponse,
 } from '@server/interfaces/api/mediaInterfaces';
 import { Permission } from '@server/lib/permissions';
-import { getSettings } from '@server/lib/settings';
+import { getSettings, type DVRSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { Router } from 'express';
@@ -202,17 +202,36 @@ mediaRoutes.delete(
 
 mediaRoutes.delete(
   '/:id/file',
-  isAuthenticated(Permission.MANAGE_REQUESTS),
+  isAuthenticated(
+    [Permission.MANAGE_REQUESTS, Permission.MANAGE_OWN_REQUESTS],
+    {
+      type: 'or',
+    }
+  ),
   async (req, res, next) => {
     try {
       const settings = getSettings();
       const mediaRepository = getRepository(Media);
       const media = await mediaRepository.findOneOrFail({
         where: { id: Number(req.params.id) },
+        relations: { requests: { requestedBy: true } },
       });
 
       const is4k = String(req.query.is4k) === 'true';
       const isMovie = media.mediaType === MediaType.MOVIE;
+
+      if (
+        !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
+        !(
+          req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+          media.isOwnedBy(req.user.id, is4k)
+        )
+      ) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to delete this media.',
+        });
+      }
 
       let serviceSettings;
       if (isMovie) {
@@ -304,6 +323,92 @@ mediaRoutes.delete(
     }
   }
 );
+
+const sizeCache = new Map<string, { expires: number; size: number | null }>();
+const SIZE_CACHE_TTL = 5 * 60 * 1000;
+// Disabled under the test runner, where media IDs repeat between tests.
+const sizeCacheEnabled = process.env.NODE_ENV !== 'test';
+
+mediaRoutes.get('/:id/size', isAuthenticated(), async (req, res, next) => {
+  try {
+    const is4k = String(req.query.is4k) === 'true';
+    const cacheKey = `${req.params.id}:${is4k}`;
+    const cached = sizeCacheEnabled ? sizeCache.get(cacheKey) : undefined;
+    if (cached && cached.expires > Date.now()) {
+      return res.status(200).json({ size: cached.size });
+    }
+
+    const settings = getSettings();
+    const mediaRepository = getRepository(Media);
+    const media = await mediaRepository.findOneOrFail({
+      where: { id: Number(req.params.id) },
+    });
+
+    const isMovie = media.mediaType === MediaType.MOVIE;
+    let serviceSettings: DVRSettings | undefined;
+    if (isMovie) {
+      serviceSettings = settings.radarr.find(
+        (radarr) => radarr.isDefault && radarr.is4k === is4k
+      );
+    } else {
+      serviceSettings = settings.sonarr.find(
+        (sonarr) => sonarr.isDefault && sonarr.is4k === is4k
+      );
+    }
+
+    const specificServiceId = is4k ? media.serviceId4k : media.serviceId;
+    if (
+      specificServiceId != null &&
+      specificServiceId >= 0 &&
+      serviceSettings?.id !== specificServiceId
+    ) {
+      serviceSettings = isMovie
+        ? settings.radarr.find((radarr) => radarr.id === specificServiceId)
+        : settings.sonarr.find((sonarr) => sonarr.id === specificServiceId);
+    }
+
+    let size: number | null = null;
+    if (serviceSettings) {
+      if (isMovie) {
+        const radarr = new RadarrAPI({
+          apiKey: serviceSettings.apiKey,
+          url: RadarrAPI.buildUrl(serviceSettings, '/api/v3'),
+        });
+        const movies = await radarr.getLibraryMoviesByTmdbId(media.tmdbId);
+        size = movies[0]?.movieFile?.size ?? null;
+      } else if (media.tvdbId) {
+        const sonarr = new SonarrAPI({
+          apiKey: serviceSettings.apiKey,
+          url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
+        });
+        const series = await sonarr.getLibrarySeriesByTvdbId(media.tvdbId);
+        size = series[0]?.statistics?.sizeOnDisk ?? null;
+      }
+    }
+
+    if (sizeCacheEnabled) {
+      sizeCache.set(cacheKey, {
+        expires: Date.now() + SIZE_CACHE_TTL,
+        size,
+      });
+    }
+
+    return res.status(200).json({ size });
+  } catch (e) {
+    if (e instanceof EntityNotFoundError) {
+      return next({ status: 404, message: 'Media not found.' });
+    }
+    logger.error('Something went wrong retrieving media file size', {
+      label: 'Media',
+      mediaId: req.params.id,
+      message: e.message,
+    });
+    return next({
+      status: 500,
+      message: 'Unable to retrieve media file size.',
+    });
+  }
+});
 
 mediaRoutes.get<{ id: string }, MediaWatchDataResponse>(
   '/:id/watch_data',
