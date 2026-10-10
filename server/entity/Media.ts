@@ -254,6 +254,23 @@ class Media {
     }
   }
 
+  /**
+   * Returns true when the user is the only requester whose access depends on
+   * the files for this media in the given resolution. Declined requests are
+   * ignored, and at least one non-declined request must belong to the user.
+   */
+  public isOwnedBy(userId: number, is4k: boolean): boolean {
+    const requests = (this.requests ?? []).filter(
+      (request) =>
+        request.is4k === is4k && request.status !== MediaRequestStatus.DECLINED
+    );
+
+    return (
+      requests.length > 0 &&
+      requests.every((request) => request.requestedBy?.id === userId)
+    );
+  }
+
   @AfterLoad()
   public setPlexUrls(): void {
     const { machineId, webAppUrl } = getSettings().plex;

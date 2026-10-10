@@ -3,6 +3,7 @@ import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import ConfirmButton from '@app/components/Common/ConfirmButton';
+import MediaSize from '@app/components/MediaSize';
 import RequestModal from '@app/components/RequestModal';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
@@ -45,6 +46,7 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   mediaerror: '{mediaType} Not Found',
   editrequest: 'Edit Request',
   deleterequest: 'Delete Request',
+  filesize: 'File Size',
   cancelRequest: 'Cancel Request',
   tmdbid: 'TMDB ID',
   tvdbid: 'TheTVDB ID',
@@ -421,6 +423,11 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
       : []
   );
 
+  const canManageRequests = hasPermission(Permission.MANAGE_REQUESTS);
+  const canManageOwnRequests =
+    hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+    requestData.requestedBy.id === user?.id;
+
   return (
     <>
       <RequestModal
@@ -562,6 +569,14 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                 />
               )}
             </div>
+            <MediaSize
+              mediaId={requestData.media.id}
+              is4k={requestData.is4k}
+              label={intl.formatMessage(messages.filesize)}
+              containerClassName="card-field"
+              labelClassName="card-field-name"
+              className="flex truncate text-sm text-gray-300"
+            />
             <div className="card-field">
               {hasPermission(
                 [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
@@ -701,7 +716,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
               </Button>
             )}
           {requestData.status !== MediaRequestStatus.PENDING &&
-            hasPermission(Permission.MANAGE_REQUESTS) && (
+            (canManageRequests || canManageOwnRequests) && (
               <>
                 <ConfirmButton
                   onClick={() => deleteRequest()}
