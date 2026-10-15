@@ -4686,6 +4686,37 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/MediaRequest'
+  /user/storage:
+    get:
+      summary: Get per-user storage usage
+      description: |
+        Returns the storage used by the media each user requested, in bytes. Admins
+        (`MANAGE_USERS`) receive every user; other users receive only themselves.
+        `size` is the raw total and `biasedSize` is `size` multiplied by a headroom
+        factor, which is what end users are shown.
+      tags:
+        - users
+      responses:
+        '200':
+          description: Per-user storage usage in JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: number
+                        size:
+                          type: number
+                          example: 123456789
+                        biasedSize:
+                          type: number
+                          example: 154320986
   /user/{userId}/quota:
     get:
       summary: Get quotas for a specific user
