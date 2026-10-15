@@ -15,8 +15,10 @@ import type {
   QuotaResponse,
   UserRequestsResponse,
   UserResultsResponse,
+  UserStorageResponse,
   UserWatchDataResponse,
 } from '@server/interfaces/api/userInterfaces';
+import { getUserStorage } from '@server/lib/mediaUsage';
 import { Permission, hasPermission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -32,6 +34,39 @@ import { In, Not } from 'typeorm';
 import userSettingsRoutes from './usersettings';
 
 const router = Router();
+
+router.get<Record<string, never>, UserStorageResponse>(
+  '/storage',
+  isAuthenticated(),
+  async (req, res, next) => {
+    try {
+      const storage = await getUserStorage();
+      const canViewAll =
+        req.user?.hasPermission(Permission.MANAGE_USERS) ?? false;
+
+      const users = Array.from(storage.entries())
+        .filter(([userId]) => canViewAll || userId === req.user?.id)
+        .map(([userId, entry]) => ({
+          userId,
+          size: entry.size,
+          biasedSize: entry.biasedSize,
+        }));
+
+      // Make sure the requesting user always appears, even with no usage.
+      if (
+        !canViewAll &&
+        req.user &&
+        !users.some((u) => u.userId === req.user?.id)
+      ) {
+        users.push({ userId: req.user.id, size: 0, biasedSize: 0 });
+      }
+
+      return res.status(200).json({ users });
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
 
 router.get('/', async (req, res, next) => {
   try {
