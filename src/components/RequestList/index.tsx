@@ -8,6 +8,7 @@ import { useUpdateQueryParams } from '@app/hooks/useUpdateQueryParams';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { formatBytes } from '@app/utils/numberHelpers';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import {
   ArrowDownIcon,
@@ -19,6 +20,7 @@ import {
   FunnelIcon,
 } from '@heroicons/react/24/solid';
 import type { RequestResultsResponse } from '@server/interfaces/api/requestInterfaces';
+import type { UserStorageResponse } from '@server/interfaces/api/userInterfaces';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
@@ -31,6 +33,7 @@ const messages = defineMessages('components.RequestList', {
   sortAdded: 'Most Recent',
   sortModified: 'Last Modified',
   sortDirection: 'Toggle Sort Direction',
+  storageused: 'Storage used',
   unableToConnect:
     'Unable to connect to {services}. Some information may be unavailable.',
 });
@@ -85,6 +88,16 @@ const RequestList = () => {
           ? `&requestedBy=${router.query.userId}`
           : ''
     }`
+  );
+
+  const { data: storageData } = useSWR<UserStorageResponse>(
+    '/api/v1/user/storage'
+  );
+  const storageTargetId = router.query.userId
+    ? Number(router.query.userId)
+    : currentUser?.id;
+  const storageUsage = storageData?.users.find(
+    (u) => u.userId === storageTargetId
   );
 
   // Restore last set filter values on component mount
@@ -291,6 +304,18 @@ const RequestList = () => {
           </div>
         </div>
       </div>
+
+      {storageUsage && storageUsage.biasedSize > 0 && (
+        <div className="mb-4 flex items-center rounded-md border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-gray-200">
+          <CircleStackIcon className="mr-2 h-5 w-5 flex-shrink-0 text-gray-400" />
+          <span>
+            {intl.formatMessage(messages.storageused)}:{' '}
+            <span className="font-semibold text-white">
+              {formatBytes(storageUsage.biasedSize)}
+            </span>
+          </span>
+        </div>
+      )}
 
       {data.serviceErrors &&
         (data.serviceErrors.radarr.length > 0 ||
