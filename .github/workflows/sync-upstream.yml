@@ -36,6 +36,13 @@ jobs:
           git remote add upstream https://github.com/seerr-team/seerr.git
           git fetch --no-tags upstream develop
           if git rebase upstream/develop; then
+            # The Actions GITHUB_TOKEN is not allowed to modify workflow files,
+            # so drop upstream's .github/workflows and keep ours before pushing.
+            git rm -r -q --ignore-unmatch .github/workflows
+            git checkout origin/manage-own-requests -- .github/workflows
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: keep fork workflow files during upstream sync"
+            fi
             echo "result=ok" >> "$GITHUB_OUTPUT"
           else
             git rebase --abort || true
