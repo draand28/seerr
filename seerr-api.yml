@@ -7443,6 +7443,48 @@ paths:
                     type: number
                     nullable: true
                     example: 123456789
+                  seasons:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      properties:
+                        seasonNumber:
+                          type: number
+                        size:
+                          type: number
+                          example: 987654321
+  /media/{mediaId}/season/{seasonNumber}:
+    delete:
+      summary: Delete a season's files
+      description: Removes a single season's episode files from Sonarr and unmonitors it. The `MANAGE_REQUESTS` permission is required, or `MANAGE_OWN_REQUESTS` when the user is the only requester of that season.
+      tags:
+        - media
+      parameters:
+        - in: path
+          name: mediaId
+          description: Media ID
+          required: true
+          example: '1'
+          schema:
+            type: string
+        - in: path
+          name: seasonNumber
+          description: Season number
+          required: true
+          example: 1
+          schema:
+            type: number
+        - in: query
+          name: is4k
+          description: Whether to remove from the 4K service instance (true) or regular service instance (false)
+          required: false
+          example: false
+          schema:
+            type: boolean
+      responses:
+        '204':
+          description: Successfully deleted the season files
   /media/{mediaId}/{status}:
     post:
       summary: Update media status

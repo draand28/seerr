@@ -405,6 +405,40 @@ class SonarrAPI extends ServarrBase<{
     }
   }
 
+  public async setEpisodesMonitored(
+    episodeIds: number[],
+    monitored: boolean
+  ): Promise<void> {
+    if (!episodeIds.length) {
+      return;
+    }
+    try {
+      await this.axios.put('/episode/monitor', {
+        episodeIds,
+        monitored,
+      });
+    } catch (e) {
+      logger.error('Failed to update episode monitoring', {
+        label: 'Sonarr API',
+        errorMessage: e.message,
+        episodeIds,
+      });
+      throw new Error('Failed to update episode monitoring', { cause: e });
+    }
+  }
+
+  public async deleteEpisodeFiles(episodeFileIds: number[]): Promise<void> {
+    await Promise.all(
+      episodeFileIds.map((id) =>
+        this.axios.delete(`/episodefile/${id}`).catch((e) => {
+          if (e?.response?.status !== 404) {
+            throw e;
+          }
+        })
+      )
+    );
+  }
+
   private buildSeasonList(
     seasons: number[],
     existingSeasons?: SonarrSeason[]
