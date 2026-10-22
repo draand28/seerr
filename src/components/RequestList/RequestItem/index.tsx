@@ -7,10 +7,12 @@ import MediaSize from '@app/components/MediaSize';
 import RequestModal from '@app/components/RequestModal';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
+import { useMediaSize } from '@app/hooks/useMediaSize';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { formatBytes } from '@app/utils/numberHelpers';
 import {
   getRequestDownloadStatus,
   refreshIntervalHelper,
@@ -47,6 +49,7 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   editrequest: 'Edit Request',
   deleterequest: 'Delete Request',
   filesize: 'File Size',
+  seasonstorage: 'Per season',
   cancelRequest: 'Cancel Request',
   tmdbid: 'TMDB ID',
   tvdbid: 'TheTVDB ID',
@@ -304,6 +307,8 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
     ),
   });
 
+  const mediaSize = useMediaSize(requestData?.media.id, requestData?.is4k);
+
   const [isRetrying, setRetrying] = useState(false);
   const [updatingType, setUpdatingType] = useState<
     'approve' | 'decline' | null
@@ -552,6 +557,32 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
               labelClassName="card-field-name"
               className="flex truncate text-sm text-gray-300"
             />
+            {requestData.type === 'tv' && requestData.seasons.length > 0 && (
+              <div className="card-field">
+                <span className="card-field-name">
+                  {intl.formatMessage(messages.seasonstorage)}
+                </span>
+                <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-300">
+                  {requestData.seasons.map((season) => {
+                    const size =
+                      mediaSize?.seasons?.find(
+                        (s) => s.seasonNumber === season.seasonNumber
+                      )?.size ?? 0;
+                    if (!size) {
+                      return null;
+                    }
+                    return (
+                      <span key={`season-size-${season.seasonNumber}`}>
+                        {season.seasonNumber === 0
+                          ? intl.formatMessage(globalMessages.specials)
+                          : `S${season.seasonNumber}`}
+                        : {formatBytes(size)}
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+            )}
             <div className="card-field">
               {hasPermission(
                 [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
