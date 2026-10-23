@@ -388,10 +388,11 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
           >
             {isMovie(title) ? title.title : title.name}
           </Link>
-          {hasPermission(
+          {(hasPermission(
             [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
             { type: 'or' }
-          ) && (
+          ) ||
+            requestData.requestedBy.id !== user?.id) && (
             <div className="card-field">
               <Link
                 href={`/users/${requestData.requestedBy.id}`}
@@ -623,11 +624,14 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
                 </div>
               )}
             {requestData.status !== MediaRequestStatus.PENDING &&
-              hasPermission(
+              ((hasPermission(
                 [Permission.MANAGE_REQUESTS, Permission.MANAGE_OWN_REQUESTS],
                 { type: 'or' }
               ) &&
-              requestData.requestedBy.id === user?.id && (
+                requestData.requestedBy.id === user?.id) ||
+                (user?.managedUserIds ?? []).includes(
+                  requestData.requestedBy.id
+                )) && (
                 <div>
                   <ConfirmButton
                     buttonSize="sm"

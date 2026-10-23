@@ -407,6 +407,9 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
   const canManageOwnRequests =
     hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
     requestData.requestedBy.id === user?.id;
+  const canManageRequestedUser = (user?.managedUserIds ?? []).includes(
+    requestData.requestedBy.id
+  );
 
   return (
     <>
@@ -584,10 +587,11 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
               </div>
             )}
             <div className="card-field">
-              {hasPermission(
+              {(hasPermission(
                 [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
                 { type: 'or' }
-              ) ? (
+              ) ||
+                requestData.requestedBy.id !== user?.id) ? (
                 <>
                   <span className="card-field-name">
                     {intl.formatMessage(messages.requested)}
@@ -723,7 +727,9 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
             )}
           {requestData.status !== MediaRequestStatus.PENDING &&
             request.canRemove &&
-            (canManageRequests || canManageOwnRequests) && (
+            (canManageRequests ||
+              canManageOwnRequests ||
+              canManageRequestedUser) && (
               <ConfirmButton
                 onClick={() => deleteMediaFile()}
                 confirmText={intl.formatMessage(globalMessages.areyousure)}
@@ -737,6 +743,16 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                 </span>
               </ConfirmButton>
             )}
+          {canManageRequestedUser && (
+            <ConfirmButton
+              onClick={() => deleteRequest()}
+              confirmText={intl.formatMessage(globalMessages.areyousure)}
+              className="w-full"
+            >
+              <TrashIcon />
+              <span>{intl.formatMessage(messages.deleterequest)}</span>
+            </ConfirmButton>
+          )}
           {requestData.status === MediaRequestStatus.PENDING &&
             hasPermission(Permission.MANAGE_REQUESTS) && (
               <div className="flex w-full flex-row space-x-2">

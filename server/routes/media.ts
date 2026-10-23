@@ -2,7 +2,11 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import TautulliAPI from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import {
+  MediaRequestStatus,
+  MediaStatus,
+  MediaType,
+} from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import Season from '@server/entity/Season';
@@ -220,12 +224,21 @@ mediaRoutes.delete(
       const is4k = String(req.query.is4k) === 'true';
       const isMovie = media.mediaType === MediaType.MOVIE;
 
+      const canManageMediaRequesters = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          request.status !== MediaRequestStatus.DECLINED &&
+          (req.user?.canManageRequestsOf(request.requestedBy?.id ?? -1) ??
+            false)
+      );
+
       if (
         !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
         !(
           req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
           media.isOwnedBy(req.user.id, is4k)
-        )
+        ) &&
+        !canManageMediaRequesters
       ) {
         return next({
           status: 403,
@@ -451,12 +464,24 @@ mediaRoutes.delete(
         return next({ status: 400, message: 'Media is not a series.' });
       }
 
+      const canManageSeasonRequesters = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          request.status !== MediaRequestStatus.DECLINED &&
+          (request.seasons ?? []).some(
+            (season) => season.seasonNumber === seasonNumber
+          ) &&
+          (req.user?.canManageRequestsOf(request.requestedBy?.id ?? -1) ??
+            false)
+      );
+
       if (
         !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
         !(
           req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
           media.isSeasonOwnedBy(req.user.id, is4k, seasonNumber)
-        )
+        ) &&
+        !canManageSeasonRequesters
       ) {
         return next({
           status: 403,
