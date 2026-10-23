@@ -1631,6 +1631,8 @@
   "components.UserProfile.UserSettings.UserPasswordChange.validationCurrentPassword": "You must provide your current password",
   "components.UserProfile.UserSettings.UserPasswordChange.validationNewPassword": "You must provide a new password",
   "components.UserProfile.UserSettings.UserPasswordChange.validationNewPasswordLength": "Password is too short; should be a minimum of 8 characters",
+  "components.UserProfile.UserSettings.UserPermissions.managedusers": "Manage requests of",
+  "components.UserProfile.UserSettings.UserPermissions.managedusersDescription": "Select other users whose requests this user can view and delete.",
   "components.UserProfile.UserSettings.UserPermissions.permissions": "Permissions",
   "components.UserProfile.UserSettings.UserPermissions.toastSettingsFailure": "Something went wrong while saving settings.",
   "components.UserProfile.UserSettings.UserPermissions.toastSettingsSuccess": "Permissions saved successfully!",

@@ -36,3 +36,7 @@ export interface UserStorageResponse {
     biasedSize: number;
   }[];
 }
+
+export interface ManagedUsersResponse {
+  userIds: number[];
+}

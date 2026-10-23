@@ -147,22 +147,33 @@ requestRoutes.get<Record<string, unknown>, RequestResultsResponse>(
           }
         );
 
-      if (
-        !req.user?.hasPermission(
-          [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
-          { type: 'or' }
-        )
-      ) {
-        if (requestedBy && requestedBy !== req.user?.id) {
+      const managedUserIds = req.user?.managedUserIds ?? [];
+      const canViewAllRequests = req.user?.hasPermission(
+        [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
+        { type: 'or' }
+      );
+
+      if (!canViewAllRequests) {
+        const allowedIds = [req.user?.id, ...managedUserIds].filter(
+          (id): id is number => id != null
+        );
+
+        if (requestedBy && !allowedIds.includes(requestedBy)) {
           return next({
             status: 403,
             message: "You do not have permission to view this user's requests.",
           });
         }
 
-        query = query.andWhere('requestedBy.id = :id', {
-          id: req.user?.id,
-        });
+        if (requestedBy) {
+          query = query.andWhere('requestedBy.id = :id', {
+            id: requestedBy,
+          });
+        } else {
+          query = query.andWhere('requestedBy.id IN (:...ids)', {
+            ids: allowedIds,
+          });
+        }
       } else if (requestedBy) {
         query = query.andWhere('requestedBy.id = :id', {
           id: requestedBy,
@@ -251,11 +262,16 @@ requestRoutes.get<Record<string, unknown>, RequestResultsResponse>(
         req.user?.hasPermission(Permission.MANAGE_REQUESTS) ?? false;
       const canManageOwnRequests =
         req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) ?? false;
+      const hasManagedUsers = (req.user?.managedUserIds ?? []).length > 0;
 
       // add canRemove prop if user has permission to manage the request
-      if (canManageRequests || canManageOwnRequests) {
+      if (canManageRequests || canManageOwnRequests || hasManagedUsers) {
         mappedRequests = mappedRequests.map((r) => {
-          if (!canManageRequests && r.requestedBy?.id !== req.user?.id) {
+          if (
+            !canManageRequests &&
+            r.requestedBy?.id !== req.user?.id &&
+            !req.user?.canManageRequestsOf(r.requestedBy?.id ?? -1)
+          ) {
             return r;
           }
 
@@ -458,7 +474,8 @@ requestRoutes.get('/:requestId', async (req, res, next) => {
       !req.user?.hasPermission(
         [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
         { type: 'or' }
-      )
+      ) &&
+      !req.user?.canManageRequestsOf(request.requestedBy.id)
     ) {
       return next({
         status: 403,
@@ -744,11 +761,14 @@ requestRoutes.delete('/:requestId', async (req, res, next) => {
       const canManageOwnRequests = req.user?.hasPermission(
         Permission.MANAGE_OWN_REQUESTS
       );
+      const canManageRequestedUser =
+        req.user?.canManageRequestsOf(request.requestedBy.id) ?? false;
 
       if (
         !canManageRequests &&
         !(canManageOwnRequests && isOwner) &&
-        !(isOwner && request.status === MediaRequestStatus.PENDING)
+        !(isOwner && request.status === MediaRequestStatus.PENDING) &&
+        !canManageRequestedUser
       ) {
         return next({
           status: 401,

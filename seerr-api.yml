@@ -4735,6 +4735,66 @@ paths:
                         biasedSize:
                           type: number
                           example: 154320986
+  /user/{userId}/managed_users:
+    get:
+      summary: Get the users whose requests a user can manage
+      description: Returns the IDs of users whose requests this user can view and delete. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Managed user IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userIds:
+                    type: array
+                    items:
+                      type: number
+    post:
+      summary: Set the users whose requests a user can manage
+      description: Replaces the set of users whose requests this user can view and delete. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userIds
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: number
+      responses:
+        '200':
+          description: Updated managed user IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userIds:
+                    type: array
+                    items:
+                      type: number
   /user/{userId}/quota:
     get:
       summary: Get quotas for a specific user
