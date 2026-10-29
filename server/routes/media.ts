@@ -1,5 +1,5 @@
 import RadarrAPI from '@server/api/servarr/radarr';
-import SonarrAPI from '@server/api/servarr/sonarr';
+import SonarrAPI, { type SonarrSeries } from '@server/api/servarr/sonarr';
 import TautulliAPI from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
 import {
@@ -24,6 +24,77 @@ import type { FindOneOptions } from 'typeorm';
 import { EntityNotFoundError, In, IsNull, Not } from 'typeorm';
 
 const mediaRoutes = Router();
+
+/**
+ * Finds a series in Sonarr even when Seerr's TVDB id differs from Sonarr's.
+ * Tries tvdbId, then imdbId, then the TMDB title, across configured servers.
+ */
+async function findSeriesInSonarr(
+  media: Media,
+  is4k: boolean
+): Promise<
+  { sonarr: SonarrAPI; series: SonarrSeries & { id: number } } | undefined
+> {
+  const settings = getSettings();
+  const preferredId = is4k ? media.serviceId4k : media.serviceId;
+  const servers = settings.sonarr
+    .filter((server) => server.is4k === is4k)
+    .sort((a, b) => {
+      const score = (server: { id: number; isDefault: boolean }): number =>
+        server.id === preferredId ? 0 : server.isDefault ? 1 : 2;
+      return score(a) - score(b);
+    });
+
+  let tmdbTitle: string | undefined;
+
+  for (const server of servers) {
+    try {
+      const sonarr = new SonarrAPI({
+        apiKey: server.apiKey,
+        url: SonarrAPI.buildUrl(server, '/api/v3'),
+      });
+      const all = await sonarr.getSeries();
+
+      let series = media.tvdbId
+        ? all.find((item) => item.tvdbId === media.tvdbId)
+        : undefined;
+
+      if (!series && media.imdbId) {
+        series = all.find(
+          (item) => item.imdbId && item.imdbId === media.imdbId
+        );
+      }
+
+      if (!series) {
+        if (tmdbTitle === undefined) {
+          try {
+            const show = await new TheMovieDb().getTvShow({
+              tvId: media.tmdbId,
+            });
+            tmdbTitle = show.name?.toLowerCase() ?? '';
+          } catch {
+            tmdbTitle = '';
+          }
+        }
+        if (tmdbTitle) {
+          series = all.find(
+            (item) =>
+              item.title.toLowerCase() === tmdbTitle ||
+              item.cleanTitle?.toLowerCase() === tmdbTitle
+          );
+        }
+      }
+
+      if (series?.id != null) {
+        return { sonarr, series: series as SonarrSeries & { id: number } };
+      }
+    } catch {
+      // Try the next configured Sonarr server.
+    }
+  }
+
+  return undefined;
+}
 
 mediaRoutes.get('/', async (req, res, next) => {
   const mediaRepository = getRepository(Media);
@@ -392,27 +463,21 @@ mediaRoutes.get('/:id/size', isAuthenticated(), async (req, res, next) => {
 
     let size: number | null = null;
     let seasons: { seasonNumber: number; size: number }[] | null = null;
-    if (serviceSettings) {
-      if (isMovie) {
+    if (isMovie) {
+      if (serviceSettings) {
         const radarr = new RadarrAPI({
           apiKey: serviceSettings.apiKey,
           url: RadarrAPI.buildUrl(serviceSettings, '/api/v3'),
         });
         const movies = await radarr.getLibraryMoviesByTmdbId(media.tmdbId);
         size = movies[0]?.movieFile?.size ?? null;
-      } else if (media.tvdbId) {
-        const sonarr = new SonarrAPI({
-          apiKey: serviceSettings.apiKey,
-          url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
-        });
-        const series =
-          (await sonarr.getLibrarySeriesByTvdbId(media.tvdbId))[0] ??
-          (await sonarr.getSeries()).find(
-            (item) => item.tvdbId === media.tvdbId
-          );
-        size = series?.statistics?.sizeOnDisk ?? null;
+      }
+    } else {
+      const found = await findSeriesInSonarr(media, is4k);
+      if (found) {
+        size = found.series.statistics?.sizeOnDisk ?? null;
         seasons =
-          series?.seasons
+          found.series.seasons
             ?.filter((season) => season.seasonNumber > 0)
             .map((season) => ({
               seasonNumber: season.seasonNumber,
@@ -493,50 +558,21 @@ mediaRoutes.delete(
         });
       }
 
-      const settings = getSettings();
-      let serviceSettings: DVRSettings | undefined = settings.sonarr.find(
-        (sonarr) => sonarr.isDefault && sonarr.is4k === is4k
-      );
-      const specificServiceId = is4k ? media.serviceId4k : media.serviceId;
-      if (
-        specificServiceId != null &&
-        specificServiceId >= 0 &&
-        serviceSettings?.id !== specificServiceId
-      ) {
-        serviceSettings = settings.sonarr.find(
-          (sonarr) => sonarr.id === specificServiceId
-        );
-      }
+      const found = await findSeriesInSonarr(media, is4k);
 
-      if (!serviceSettings) {
+      if (!found) {
+        const hasSonarrServers =
+          getSettings().sonarr.filter((server) => server.is4k === is4k).length >
+          0;
         return next({
           status: 409,
-          message: 'No Sonarr server configured to delete season files',
+          message: hasSonarrServers
+            ? 'Series not found in Sonarr; nothing was deleted.'
+            : 'No Sonarr server configured to delete season files',
         });
       }
 
-      if (!media.tvdbId) {
-        return next({
-          status: 409,
-          message: 'Series has no TVDB ID; cannot locate it in Sonarr.',
-        });
-      }
-
-      const sonarr = new SonarrAPI({
-        apiKey: serviceSettings.apiKey,
-        url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
-      });
-
-      const series = (await sonarr.getSeries()).find(
-        (item) => item.tvdbId === media.tvdbId
-      );
-
-      if (series?.id == null) {
-        return next({
-          status: 409,
-          message: 'Series not found in Sonarr; nothing was deleted.',
-        });
-      }
+      const { sonarr, series } = found;
 
       // The episode-file listing reliably carries the season number.
       const seasonFileIds = (await sonarr.getEpisodeFiles(series.id))

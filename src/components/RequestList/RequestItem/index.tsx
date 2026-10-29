@@ -339,23 +339,34 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
   };
 
   const deleteMediaFile = async () => {
-    if (request.media) {
-      try {
+    if (!request.media) {
+      return;
+    }
+
+    try {
+      if (request.type === 'tv' && request.seasons.length > 0) {
+        // Never remove the whole series for a season request.
+        for (const season of request.seasons) {
+          await axios.delete(
+            `/api/v1/media/${request.media.id}/season/${season.seasonNumber}?is4k=${request.is4k}`
+          );
+        }
+      } else {
         await axios.delete(
           `/api/v1/media/${request.media.id}/file?is4k=${request.is4k}`
         );
-      } catch (e) {
-        if (!axios.isAxiosError(e) || e.response?.status !== 404) {
-          addToast(intl.formatMessage(messages.removemediaerror), {
-            autoDismiss: true,
-            appearance: 'error',
-          });
-          revalidateList();
-          return;
-        }
       }
-      revalidateList();
+    } catch (e) {
+      if (!axios.isAxiosError(e) || e.response?.status !== 404) {
+        addToast(intl.formatMessage(messages.removemediaerror), {
+          autoDismiss: true,
+          appearance: 'error',
+        });
+        revalidateList();
+        return;
+      }
     }
+    revalidateList();
   };
 
   const retryRequest = async () => {

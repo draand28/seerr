@@ -260,9 +260,18 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
     }
 
     try {
-      await axios.delete(
-        `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}`
-      );
+      if (requestData.type === 'tv' && requestData.seasons.length > 0) {
+        // Never remove the whole series for a season request.
+        for (const season of requestData.seasons) {
+          await axios.delete(
+            `/api/v1/media/${requestData.media.id}/season/${season.seasonNumber}?is4k=${requestData.is4k}`
+          );
+        }
+      } else {
+        await axios.delete(
+          `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}`
+        );
+      }
     } catch (e) {
       if (!axios.isAxiosError(e) || e.response?.status !== 404) {
         addToast(intl.formatMessage(messages.failedremovemedia), {
