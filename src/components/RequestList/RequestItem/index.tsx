@@ -754,7 +754,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                 </span>
               </ConfirmButton>
             )}
-          {canManageRequestedUser && (
+          {(canManageRequests || canManageRequestedUser) && (
             <ConfirmButton
               onClick={() => deleteRequest()}
               confirmText={intl.formatMessage(globalMessages.areyousure)}

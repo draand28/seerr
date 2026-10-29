@@ -39,8 +39,10 @@ RUN pnpm build
 FROM node:22.23.4-alpine3.23@sha256:206878a60dc7014193f418ab9259b6110c15fbd514b3044a267be706509944e4
 ARG SOURCE_DATE_EPOCH
 ARG COMMIT_TAG
+ARG BUILD_DATE
 ENV NODE_ENV=production
 ENV COMMIT_TAG=${COMMIT_TAG}
+ENV BUILD_DATE=${BUILD_DATE}
 ENV PORT=30357
 
 RUN apk add --no-cache tzdata
@@ -73,7 +75,7 @@ COPY --chown=node:node --from=build --exclude=cache --exclude=**/*.map /app/.nex
 COPY --chown=node:node --from=build /app/dist ./dist
 
 RUN touch config/DOCKER && \
-  echo "{\"commitTag\": \"${COMMIT_TAG}\"}" > committag.json
+  echo "{\"commitTag\": \"${COMMIT_TAG}\", \"buildDate\": \"${BUILD_DATE}\"}" > committag.json
 
 EXPOSE 30357
 
