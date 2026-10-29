@@ -405,10 +405,15 @@ mediaRoutes.get('/:id/size', isAuthenticated(), async (req, res, next) => {
           apiKey: serviceSettings.apiKey,
           url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
         });
-        const series = await sonarr.getLibrarySeriesByTvdbId(media.tvdbId);
-        size = series[0]?.statistics?.sizeOnDisk ?? null;
+        let series = (await sonarr.getLibrarySeriesByTvdbId(media.tvdbId))[0];
+        if (!series) {
+          series = (await sonarr.getSeries()).find(
+            (item) => item.tvdbId === media.tvdbId
+          );
+        }
+        size = series?.statistics?.sizeOnDisk ?? null;
         seasons =
-          series[0]?.seasons
+          series?.seasons
             ?.filter((season) => season.seasonNumber > 0)
             .map((season) => ({
               seasonNumber: season.seasonNumber,
@@ -511,32 +516,69 @@ mediaRoutes.delete(
         });
       }
 
-      if (media.tvdbId) {
-        const sonarr = new SonarrAPI({
-          apiKey: serviceSettings.apiKey,
-          url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
+      if (!media.tvdbId) {
+        return next({
+          status: 409,
+          message: 'Series has no TVDB ID; cannot locate it in Sonarr.',
         });
+      }
 
-        const series = (await sonarr.getLibrarySeriesByTvdbId(media.tvdbId))[0];
-        const seriesId = series?.id;
-        if (seriesId != null) {
-          const seasonEpisodes = (await sonarr.getEpisodes(seriesId)).filter(
-            (episode) => episode.seasonNumber === seasonNumber
-          );
-          const episodeFileIds = seasonEpisodes
-            .map((episode) => episode.episodeFileId)
-            .filter((id) => id > 0);
+      const sonarr = new SonarrAPI({
+        apiKey: serviceSettings.apiKey,
+        url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
+      });
 
-          if (episodeFileIds.length > 0) {
-            await sonarr.deleteEpisodeFiles(episodeFileIds);
-          }
+      const series = (await sonarr.getSeries()).find(
+        (item) => item.tvdbId === media.tvdbId
+      );
 
-          // Unmonitor the season so Sonarr does not immediately re-download it.
+      if (series?.id == null) {
+        return next({
+          status: 409,
+          message: 'Series not found in Sonarr; nothing was deleted.',
+        });
+      }
+
+      // The episode-file listing reliably carries the season number.
+      const seasonFileIds = (await sonarr.getEpisodeFiles(series.id))
+        .filter((file) => file.seasonNumber === seasonNumber)
+        .map((file) => file.id);
+
+      const seasonHasFilesOnDisk =
+        (series.seasons?.find((item) => item.seasonNumber === seasonNumber)
+          ?.statistics?.sizeOnDisk ?? 0) > 0;
+
+      if (seasonFileIds.length === 0 && seasonHasFilesOnDisk) {
+        return next({
+          status: 409,
+          message:
+            'Sonarr reports files for this season but none could be listed; nothing was deleted.',
+        });
+      }
+
+      if (seasonFileIds.length > 0) {
+        await sonarr.deleteEpisodeFiles(seasonFileIds);
+      }
+
+      // Unmonitor the season so Sonarr does not immediately re-download it.
+      // A failure here must not undo a successful file deletion.
+      try {
+        const seasonEpisodes = (await sonarr.getEpisodes(series.id)).filter(
+          (episode) => episode.seasonNumber === seasonNumber
+        );
+        if (seasonEpisodes.length > 0) {
           await sonarr.setEpisodesMonitored(
             seasonEpisodes.map((episode) => episode.id),
             false
           );
         }
+      } catch (e) {
+        logger.warn('Failed to unmonitor deleted season episodes', {
+          label: 'Media',
+          mediaId: media.id,
+          seasonNumber,
+          message: e.message,
+        });
       }
 
       const statusField = is4k ? 'status4k' : 'status';
@@ -549,8 +591,20 @@ mediaRoutes.delete(
       }
       season[statusField] = MediaStatus.DELETED;
 
+      // A still-active request for another season means the series is not gone,
+      // so only mark the whole media deleted when no requests remain active.
+      const hasActiveRequests = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          (request.status === MediaRequestStatus.PENDING ||
+            request.status === MediaRequestStatus.APPROVED)
+      );
       const seasonStatuses = media.seasons.map((item) => item[statusField]);
-      if (seasonStatuses.every((status) => status === MediaStatus.DELETED)) {
+
+      if (
+        !hasActiveRequests &&
+        seasonStatuses.every((status) => status === MediaStatus.DELETED)
+      ) {
         media[statusField] = MediaStatus.DELETED;
       } else if (
         seasonStatuses.some((status) => status === MediaStatus.DELETED)

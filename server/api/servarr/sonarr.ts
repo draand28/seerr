@@ -389,6 +389,26 @@ class SonarrAPI extends ServarrBase<{
     }
   }
 
+  public async getEpisodeFiles(
+    seriesId: number
+  ): Promise<{ id: number; seasonNumber: number }[]> {
+    try {
+      const response = await this.axios.get<
+        { id: number; seasonNumber: number }[]
+      >('/episodefile', {
+        params: { seriesId },
+      });
+      return response.data;
+    } catch (e) {
+      logger.error('Failed to retrieve episode files', {
+        label: 'Sonarr API',
+        errorMessage: e.message,
+        seriesId,
+      });
+      throw new Error('Failed to get episode files', { cause: e });
+    }
+  }
+
   public async monitorEpisodes(episodeIds: number[]): Promise<void> {
     try {
       await this.axios.put('/episode/monitor', {

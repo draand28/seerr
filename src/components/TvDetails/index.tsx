@@ -176,8 +176,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
         `/api/v1/media/${data.mediaInfo.id}/season/${seasonNumber}?is4k=${is4k}`
       );
       revalidate();
-    } catch {
-      addToast(intl.formatMessage(messages.deleteSeasonError), {
+    } catch (e) {
+      const message =
+        axios.isAxiosError(e) && e.response?.data?.message
+          ? e.response.data.message
+          : intl.formatMessage(messages.deleteSeasonError);
+      addToast(message, {
         autoDismiss: true,
         appearance: 'error',
       });
