@@ -405,12 +405,11 @@ mediaRoutes.get('/:id/size', isAuthenticated(), async (req, res, next) => {
           apiKey: serviceSettings.apiKey,
           url: SonarrAPI.buildUrl(serviceSettings, '/api/v3'),
         });
-        let series = (await sonarr.getLibrarySeriesByTvdbId(media.tvdbId))[0];
-        if (!series) {
-          series = (await sonarr.getSeries()).find(
+        const series =
+          (await sonarr.getLibrarySeriesByTvdbId(media.tvdbId))[0] ??
+          (await sonarr.getSeries()).find(
             (item) => item.tvdbId === media.tvdbId
           );
-        }
         size = series?.statistics?.sizeOnDisk ?? null;
         seasons =
           series?.seasons
