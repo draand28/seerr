@@ -8,6 +8,7 @@ import Modal from '@app/components/Common/Modal';
 import PageTitle from '@app/components/Common/PageTitle';
 import SensitiveInput from '@app/components/Common/SensitiveInput';
 import Table from '@app/components/Common/Table';
+import Tooltip from '@app/components/Common/Tooltip';
 import BulkEditModal from '@app/components/UserList/BulkEditModal';
 import PlexImportModal from '@app/components/UserList/PlexImportModal';
 import useDebouncedState from '@app/hooks/useDebouncedState';
@@ -18,6 +19,7 @@ import type { User } from '@app/hooks/useUser';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { formatBytes } from '@app/utils/numberHelpers';
 import { Transition } from '@headlessui/react';
 import {
   BarsArrowDownIcon,
@@ -32,7 +34,10 @@ import {
   UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { MediaServerType } from '@server/constants/server';
-import type { UserResultsResponse } from '@server/interfaces/api/userInterfaces';
+import type {
+  UserResultsResponse,
+  UserStorageResponse,
+} from '@server/interfaces/api/userInterfaces';
 import { hasPermission } from '@server/lib/permissions';
 import axios from 'axios';
 import { Field, Form, Formik } from 'formik';
@@ -51,6 +56,9 @@ const messages = defineMessages('components.UserList', {
   importfrommediaserver: 'Import {mediaServerName} Users',
   user: 'User',
   totalrequests: 'Requests',
+  storage: 'Storage',
+  storageTooltip:
+    'Storage used by this user\u2019s requested media. The large number includes the configured headroom; the smaller number is the actual size.',
   accounttype: 'Type',
   role: 'Role',
   created: 'Joined',
@@ -145,6 +153,13 @@ const UserList = () => {
       searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ''
     }`,
     { keepPreviousData: true }
+  );
+
+  const { data: storageData } = useSWR<UserStorageResponse>(
+    '/api/v1/user/storage'
+  );
+  const storageByUser = new Map(
+    (storageData?.users ?? []).map((u) => [u.userId, u])
   );
 
   const handleSortChange = (sortKey: Sort) => {
@@ -781,6 +796,13 @@ const UserList = () => {
             >
               {intl.formatMessage(messages.totalrequests)}
             </SortableColumnHeader>
+            <Table.TH>
+              <Tooltip content={intl.formatMessage(messages.storageTooltip)}>
+                <span className="cursor-default border-b border-dotted border-gray-500">
+                  {intl.formatMessage(messages.storage)}
+                </span>
+              </Tooltip>
+            </Table.TH>
             <SortableColumnHeader
               sortKey="usertype"
               currentSort={currentSort}
@@ -893,6 +915,16 @@ const UserList = () => {
                 )}
               </Table.TD>
               <Table.TD>
+                <div className="text-sm leading-5">
+                  <div>
+                    {formatBytes(storageByUser.get(user.id)?.biasedSize ?? 0)}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {formatBytes(storageByUser.get(user.id)?.size ?? 0)}
+                  </div>
+                </div>
+              </Table.TD>
+              <Table.TD>
                 {user.userType === UserType.PLEX ? (
                   <Badge badgeType="warning">
                     {intl.formatMessage(messages.plexuser)}
@@ -959,7 +991,7 @@ const UserList = () => {
             </tr>
           ))}
           <tr className="bg-gray-700">
-            <Table.TD colSpan={8} noPadding>
+            <Table.TD colSpan={9} noPadding>
               <nav
                 className="flex w-screen flex-col items-center space-x-4 space-y-3 px-6 py-3 sm:flex-row sm:space-y-0 lg:w-full"
                 aria-label="Pagination"

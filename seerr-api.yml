@@ -4704,6 +4704,97 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/MediaRequest'
+  /user/storage:
+    get:
+      summary: Get per-user storage usage
+      description: |
+        Returns the storage used by the media each user requested, in bytes. Admins
+        (`MANAGE_USERS`) receive every user; other users receive only themselves.
+        `size` is the raw total and `biasedSize` is `size` multiplied by a headroom
+        factor, which is what end users are shown.
+      tags:
+        - users
+      responses:
+        '200':
+          description: Per-user storage usage in JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: number
+                        size:
+                          type: number
+                          example: 123456789
+                        biasedSize:
+                          type: number
+                          example: 154320986
+  /user/{userId}/managed_users:
+    get:
+      summary: Get the users whose requests a user can manage
+      description: Returns the IDs of users whose requests this user can view and delete. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Managed user IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userIds:
+                    type: array
+                    items:
+                      type: number
+    post:
+      summary: Set the users whose requests a user can manage
+      description: Replaces the set of users whose requests this user can view and delete. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userIds
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: number
+      responses:
+        '200':
+          description: Updated managed user IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userIds:
+                    type: array
+                    items:
+                      type: number
   /user/{userId}/quota:
     get:
       summary: Get quotas for a specific user
@@ -6752,7 +6843,7 @@ paths:
           description: Only pending requests can be modified
     delete:
       summary: Delete request
-      description: Removes a request. If the user has the `MANAGE_REQUESTS` permission, any request can be removed. Otherwise, only pending requests can be removed.
+      description: Removes a request. If the user has the `MANAGE_REQUESTS` permission, any request can be removed. If the user has the `MANAGE_OWN_REQUESTS` permission, their own requests can be removed. Otherwise, only pending requests can be removed.
       tags:
         - request
       parameters:
@@ -7358,7 +7449,7 @@ paths:
   /media/{mediaId}/file:
     delete:
       summary: Delete media file
-      description: Removes a media file from radarr/sonarr. The `ADMIN` permission is required to perform this action.
+      description: Removes a media file from radarr/sonarr. The `MANAGE_REQUESTS` permission is required, or `MANAGE_OWN_REQUESTS` when the user is the only requester of the media.
       tags:
         - media
       parameters:
@@ -7379,6 +7470,81 @@ paths:
       responses:
         '204':
           description: Successfully removed media item
+  /media/{mediaId}/size:
+    get:
+      summary: Get media file size
+      description: Returns the total file size (in bytes) of the media as reported by Radarr/Sonarr, or null when the media is not tracked by a configured server.
+      tags:
+        - media
+      parameters:
+        - in: path
+          name: mediaId
+          description: Media ID
+          required: true
+          example: '1'
+          schema:
+            type: string
+        - in: query
+          name: is4k
+          description: Whether to check the 4K service instance (true) or regular service instance (false)
+          required: false
+          example: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Media file size returned in bytes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  size:
+                    type: number
+                    nullable: true
+                    example: 123456789
+                  seasons:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      properties:
+                        seasonNumber:
+                          type: number
+                        size:
+                          type: number
+                          example: 987654321
+  /media/{mediaId}/season/{seasonNumber}:
+    delete:
+      summary: Delete a season's files
+      description: Removes a single season's episode files from Sonarr and unmonitors it. The `MANAGE_REQUESTS` permission is required, or `MANAGE_OWN_REQUESTS` when the user is the only requester of that season.
+      tags:
+        - media
+      parameters:
+        - in: path
+          name: mediaId
+          description: Media ID
+          required: true
+          example: '1'
+          schema:
+            type: string
+        - in: path
+          name: seasonNumber
+          description: Season number
+          required: true
+          example: 1
+          schema:
+            type: number
+        - in: query
+          name: is4k
+          description: Whether to remove from the 4K service instance (true) or regular service instance (false)
+          required: false
+          example: false
+          schema:
+            type: boolean
+      responses:
+        '204':
+          description: Successfully deleted the season files
   /media/{mediaId}/{status}:
     post:
       summary: Update media status

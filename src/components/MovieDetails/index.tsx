@@ -17,6 +17,8 @@ import Tooltip from '@app/components/Common/Tooltip';
 import ExternalLinkBlock from '@app/components/ExternalLinkBlock';
 import IssueModal from '@app/components/IssueModal';
 import ManageSlideOver from '@app/components/ManageSlideOver';
+import MediaAdded from '@app/components/MediaAdded';
+import MediaSize from '@app/components/MediaSize';
 import MediaSlider from '@app/components/MediaSlider';
 import PersonCard from '@app/components/PersonCard';
 import RequestButton from '@app/components/RequestButton';
@@ -73,6 +75,8 @@ const messages = defineMessages('components.MovieDetails', {
   originallanguage: 'Original Language',
   overview: 'Overview',
   runtime: '{minutes} minutes',
+  filesize: 'File Size',
+  filesize4k: '4K File Size',
   cast: 'Cast',
   recommendations: 'Recommendations',
   similar: 'Similar Titles',
@@ -867,6 +871,27 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
               <span>{intl.formatMessage(globalMessages.status)}</span>
               <span className="media-fact-value">{data.status}</span>
             </div>
+            <MediaSize
+              mediaId={data.mediaInfo?.id}
+              label={intl.formatMessage(messages.filesize)}
+              containerClassName="media-fact"
+              className="media-fact-value"
+            />
+            <MediaAdded
+              mediaId={data.mediaInfo?.id}
+              containerClassName="media-fact"
+              className="media-fact-value"
+            />
+            {settings.currentSettings.movie4kEnabled &&
+              data.mediaInfo?.id && (
+                <MediaSize
+                  mediaId={data.mediaInfo?.id}
+                  is4k
+                  label={intl.formatMessage(messages.filesize4k)}
+                  containerClassName="media-fact"
+                  className="media-fact-value"
+                />
+              )}
             {filteredReleases && filteredReleases.length > 0 ? (
               <div className="media-fact">
                 <span>

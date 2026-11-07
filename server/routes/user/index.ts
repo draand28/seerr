@@ -12,11 +12,14 @@ import { UserPushSubscription } from '@server/entity/UserPushSubscription';
 import { Watchlist } from '@server/entity/Watchlist';
 import type { WatchlistResponse } from '@server/interfaces/api/discoverInterfaces';
 import type {
+  ManagedUsersResponse,
   QuotaResponse,
   UserRequestsResponse,
   UserResultsResponse,
+  UserStorageResponse,
   UserWatchDataResponse,
 } from '@server/interfaces/api/userInterfaces';
+import { getUserStorage } from '@server/lib/mediaUsage';
 import { Permission, hasPermission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -32,6 +35,39 @@ import { In, Not } from 'typeorm';
 import userSettingsRoutes from './usersettings';
 
 const router = Router();
+
+router.get<Record<string, never>, UserStorageResponse>(
+  '/storage',
+  isAuthenticated(),
+  async (req, res, next) => {
+    try {
+      const storage = await getUserStorage();
+      const canViewAll =
+        req.user?.hasPermission(Permission.MANAGE_USERS) ?? false;
+
+      const users = Array.from(storage.entries())
+        .filter(([userId]) => canViewAll || userId === req.user?.id)
+        .map(([userId, entry]) => ({
+          userId,
+          size: entry.size,
+          biasedSize: entry.biasedSize,
+        }));
+
+      // Make sure the requesting user always appears, even with no usage.
+      if (
+        !canViewAll &&
+        req.user &&
+        !users.some((u) => u.userId === req.user?.id)
+      ) {
+        users.push({ userId: req.user.id, size: 0, biasedSize: 0 });
+      }
+
+      return res.status(200).json({ users });
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
 
 router.get('/', async (req, res, next) => {
   try {
@@ -795,6 +831,51 @@ router.post(
         }
       }
       return res.status(201).json(User.filterMany(createdUsers));
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
+
+router.get<{ id: string }, ManagedUsersResponse>(
+  '/:id/managed_users',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    try {
+      const user = await getRepository(User).findOneOrFail({
+        where: { id: Number(req.params.id) },
+      });
+      return res.status(200).json({ userIds: user.managedUserIds ?? [] });
+    } catch {
+      next({ status: 404, message: 'User not found.' });
+    }
+  }
+);
+
+router.post<{ id: string }, ManagedUsersResponse, { userIds: number[] }>(
+  '/:id/managed_users',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    try {
+      const userRepository = getRepository(User);
+      const user = await userRepository.findOneOrFail({
+        where: { id: Number(req.params.id) },
+      });
+
+      const userIds = Array.isArray(req.body.userIds)
+        ? [
+            ...new Set(
+              req.body.userIds
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && id !== user.id)
+            ),
+          ]
+        : [];
+
+      user.managedUserIds = userIds;
+      await userRepository.save(user);
+
+      return res.status(200).json({ userIds });
     } catch (e) {
       next({ status: 500, message: e.message });
     }

@@ -291,6 +291,62 @@ describe('DELETE /request/:requestId', () => {
     assert.strictEqual(res.status, 401);
   });
 
+  it('allows a user with MANAGE_OWN_REQUESTS to delete their own approved request', async () => {
+    const userRepo = getRepository(User);
+    const owner = await userRepo.findOneOrFail({
+      where: { email: 'demo@seerr.dev' },
+    });
+    owner.permissions = Permission.MANAGE_OWN_REQUESTS;
+    await userRepo.save(owner);
+
+    const mediaRequest = await seedRequest(MediaRequestStatus.APPROVED);
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.delete(`/request/${mediaRequest.id}`);
+
+    assert.strictEqual(res.status, 204);
+  });
+
+  it('prevents a user with MANAGE_OWN_REQUESTS from deleting an approved request they do not own', async () => {
+    const userRepo = getRepository(User);
+    const mediaRepo = getRepository(Media);
+    const requestRepo = getRepository(MediaRequest);
+
+    const requestingUser = await userRepo.findOneOrFail({
+      where: { email: 'demo@seerr.dev' },
+    });
+    requestingUser.permissions = Permission.MANAGE_OWN_REQUESTS;
+    await userRepo.save(requestingUser);
+
+    const owner = await userRepo.findOneOrFail({
+      where: { email: 'admin@seerr.dev' },
+    });
+
+    const media = await mediaRepo.save(
+      new Media({
+        mediaType: MediaType.MOVIE,
+        tmdbId: 98765,
+        status: MediaStatus.UNKNOWN,
+        status4k: MediaStatus.UNKNOWN,
+      })
+    );
+
+    const mediaRequest = await requestRepo.save(
+      new MediaRequest({
+        type: MediaType.MOVIE,
+        status: MediaRequestStatus.APPROVED,
+        media,
+        requestedBy: owner,
+        is4k: false,
+      })
+    );
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.delete(`/request/${mediaRequest.id}`);
+
+    assert.strictEqual(res.status, 401);
+  });
+
   it('returns 404 for a non-existent request', async () => {
     const agent = await loginAs('admin@seerr.dev', 'test1234');
     const res = await agent.delete('/request/99999999');

@@ -31,6 +31,22 @@ import SeasonRequest from './SeasonRequest';
 import { UserPushSubscription } from './UserPushSubscription';
 import { UserSettings } from './UserSettings';
 
+const jsonNumberArrayTransformer = {
+  to: (value?: number[] | null): string | null =>
+    value && value.length ? JSON.stringify(value) : null,
+  from: (value?: string | null): number[] => {
+    if (!value) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map(Number) : [];
+    } catch {
+      return [];
+    }
+  },
+};
+
 @Entity()
 export class User {
   public static filterMany(
@@ -49,6 +65,7 @@ export class User {
     'jellyfinAuthToken',
     'plexToken',
     'settings',
+    'managedUserIds',
   ];
 
   static readonly serializationExcludedFields: string[] = ['settings'];
@@ -105,6 +122,13 @@ export class User {
 
   @Column({ type: 'integer', default: 0 })
   public permissions = 0;
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    transformer: jsonNumberArrayTransformer,
+  })
+  public managedUserIds?: number[] | null;
 
   @Column()
   public avatar: string;
@@ -190,6 +214,13 @@ export class User {
     options?: PermissionCheckOptions
   ): boolean {
     return !!hasPermission(permissions, this.permissions, options);
+  }
+
+  /**
+   * True when this user has been granted access to another user's requests.
+   */
+  public canManageRequestsOf(userId: number): boolean {
+    return (this.managedUserIds ?? []).includes(userId);
   }
 
   public passwordMatch(password: string): Promise<boolean> {

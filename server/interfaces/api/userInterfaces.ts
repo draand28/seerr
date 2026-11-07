@@ -28,3 +28,15 @@ export interface UserWatchDataResponse {
   recentlyWatched: Media[];
   playCount: number;
 }
+
+export interface UserStorageResponse {
+  users: {
+    userId: number;
+    size: number;
+    biasedSize: number;
+  }[];
+}
+
+export interface ManagedUsersResponse {
+  userIds: number[];
+}

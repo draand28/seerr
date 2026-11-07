@@ -24,7 +24,11 @@ import {
   appDataPermissions,
   appDataStatus,
 } from '@server/utils/appDataVolume';
-import { getAppVersion, getCommitTag } from '@server/utils/appVersion';
+import {
+  getAppVersion,
+  getBuildDate,
+  getCommitTag,
+} from '@server/utils/appVersion';
 import restartFlag from '@server/utils/restartFlag';
 import { isPerson } from '@server/utils/typeHelpers';
 import { Router } from 'express';
@@ -96,6 +100,7 @@ router.get<unknown, StatusResponse>('/status', async (req, res) => {
   return res.status(200).json({
     version: getAppVersion(),
     commitTag: getCommitTag(),
+    buildDate: getBuildDate(),
     ...(checkUpdate && { updateAvailable, commitsBehind }),
     restartRequired: restartFlag.isSet(),
   });

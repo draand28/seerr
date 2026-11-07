@@ -19,6 +19,7 @@ export interface User {
   email: string;
   avatar: string;
   permissions: number;
+  managedUserIds?: number[] | null;
   userType: number;
   createdAt: Date;
   updatedAt: Date;

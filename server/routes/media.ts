@@ -1,8 +1,12 @@
 import RadarrAPI from '@server/api/servarr/radarr';
-import SonarrAPI from '@server/api/servarr/sonarr';
+import SonarrAPI, { type SonarrSeries } from '@server/api/servarr/sonarr';
 import TautulliAPI from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import {
+  MediaRequestStatus,
+  MediaStatus,
+  MediaType,
+} from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import Season from '@server/entity/Season';
@@ -12,7 +16,7 @@ import type {
   MediaWatchDataResponse,
 } from '@server/interfaces/api/mediaInterfaces';
 import { Permission } from '@server/lib/permissions';
-import { getSettings } from '@server/lib/settings';
+import { getSettings, type DVRSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { Router } from 'express';
@@ -20,6 +24,77 @@ import type { FindOneOptions } from 'typeorm';
 import { EntityNotFoundError, In, IsNull, Not } from 'typeorm';
 
 const mediaRoutes = Router();
+
+/**
+ * Finds a series in Sonarr even when Seerr's TVDB id differs from Sonarr's.
+ * Tries tvdbId, then imdbId, then the TMDB title, across configured servers.
+ */
+async function findSeriesInSonarr(
+  media: Media,
+  is4k: boolean
+): Promise<
+  { sonarr: SonarrAPI; series: SonarrSeries & { id: number } } | undefined
+> {
+  const settings = getSettings();
+  const preferredId = is4k ? media.serviceId4k : media.serviceId;
+  const servers = settings.sonarr
+    .filter((server) => server.is4k === is4k)
+    .sort((a, b) => {
+      const score = (server: { id: number; isDefault: boolean }): number =>
+        server.id === preferredId ? 0 : server.isDefault ? 1 : 2;
+      return score(a) - score(b);
+    });
+
+  let tmdbTitle: string | undefined;
+
+  for (const server of servers) {
+    try {
+      const sonarr = new SonarrAPI({
+        apiKey: server.apiKey,
+        url: SonarrAPI.buildUrl(server, '/api/v3'),
+      });
+      const all = await sonarr.getSeries();
+
+      let series = media.tvdbId
+        ? all.find((item) => item.tvdbId === media.tvdbId)
+        : undefined;
+
+      if (!series && media.imdbId) {
+        series = all.find(
+          (item) => item.imdbId && item.imdbId === media.imdbId
+        );
+      }
+
+      if (!series) {
+        if (tmdbTitle === undefined) {
+          try {
+            const show = await new TheMovieDb().getTvShow({
+              tvId: media.tmdbId,
+            });
+            tmdbTitle = show.name?.toLowerCase() ?? '';
+          } catch {
+            tmdbTitle = '';
+          }
+        }
+        if (tmdbTitle) {
+          series = all.find(
+            (item) =>
+              item.title.toLowerCase() === tmdbTitle ||
+              item.cleanTitle?.toLowerCase() === tmdbTitle
+          );
+        }
+      }
+
+      if (series?.id != null) {
+        return { sonarr, series: series as SonarrSeries & { id: number } };
+      }
+    } catch {
+      // Try the next configured Sonarr server.
+    }
+  }
+
+  return undefined;
+}
 
 mediaRoutes.get('/', async (req, res, next) => {
   const mediaRepository = getRepository(Media);
@@ -202,17 +277,45 @@ mediaRoutes.delete(
 
 mediaRoutes.delete(
   '/:id/file',
-  isAuthenticated(Permission.MANAGE_REQUESTS),
+  isAuthenticated(
+    [Permission.MANAGE_REQUESTS, Permission.MANAGE_OWN_REQUESTS],
+    {
+      type: 'or',
+    }
+  ),
   async (req, res, next) => {
     try {
       const settings = getSettings();
       const mediaRepository = getRepository(Media);
       const media = await mediaRepository.findOneOrFail({
         where: { id: Number(req.params.id) },
+        relations: { requests: { requestedBy: true } },
       });
 
       const is4k = String(req.query.is4k) === 'true';
       const isMovie = media.mediaType === MediaType.MOVIE;
+
+      const canManageMediaRequesters = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          request.status !== MediaRequestStatus.DECLINED &&
+          (req.user?.canManageRequestsOf(request.requestedBy?.id ?? -1) ??
+            false)
+      );
+
+      if (
+        !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
+        !(
+          req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+          media.isOwnedBy(req.user.id, is4k)
+        ) &&
+        !canManageMediaRequesters
+      ) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to delete this media.',
+        });
+      }
 
       let serviceSettings;
       if (isMovie) {
@@ -301,6 +404,285 @@ mediaRoutes.delete(
         message: e.message,
       });
       next({ status: 500, message: 'Failed to delete media file' });
+    }
+  }
+);
+
+const sizeCache = new Map<
+  string,
+  {
+    expires: number;
+    size: number | null;
+    seasons: { seasonNumber: number; size: number }[] | null;
+    dateAdded: string | null;
+  }
+>();
+const SIZE_CACHE_TTL = 5 * 60 * 1000;
+// Disabled under the test runner, where media IDs repeat between tests.
+const sizeCacheEnabled = process.env.NODE_ENV !== 'test';
+
+mediaRoutes.get('/:id/size', isAuthenticated(), async (req, res, next) => {
+  try {
+    const is4k = String(req.query.is4k) === 'true';
+    const cacheKey = `${req.params.id}:${is4k}`;
+    const cached = sizeCacheEnabled ? sizeCache.get(cacheKey) : undefined;
+    if (cached && cached.expires > Date.now()) {
+      return res.status(200).json({
+        size: cached.size,
+        seasons: cached.seasons,
+        dateAdded: cached.dateAdded,
+      });
+    }
+
+    const settings = getSettings();
+    const mediaRepository = getRepository(Media);
+    const media = await mediaRepository.findOneOrFail({
+      where: { id: Number(req.params.id) },
+    });
+
+    const isMovie = media.mediaType === MediaType.MOVIE;
+    let serviceSettings: DVRSettings | undefined;
+    if (isMovie) {
+      serviceSettings = settings.radarr.find(
+        (radarr) => radarr.isDefault && radarr.is4k === is4k
+      );
+    } else {
+      serviceSettings = settings.sonarr.find(
+        (sonarr) => sonarr.isDefault && sonarr.is4k === is4k
+      );
+    }
+
+    const specificServiceId = is4k ? media.serviceId4k : media.serviceId;
+    if (
+      specificServiceId != null &&
+      specificServiceId >= 0 &&
+      serviceSettings?.id !== specificServiceId
+    ) {
+      serviceSettings = isMovie
+        ? settings.radarr.find((radarr) => radarr.id === specificServiceId)
+        : settings.sonarr.find((sonarr) => sonarr.id === specificServiceId);
+    }
+
+    let size: number | null = null;
+    let seasons: { seasonNumber: number; size: number }[] | null = null;
+    // When the newest file arrived. Users use it to decide when to free space.
+    let dateAdded: string | null = null;
+    if (isMovie) {
+      if (serviceSettings) {
+        const radarr = new RadarrAPI({
+          apiKey: serviceSettings.apiKey,
+          url: RadarrAPI.buildUrl(serviceSettings, '/api/v3'),
+        });
+        const movies = await radarr.getLibraryMoviesByTmdbId(media.tmdbId);
+        size = movies[0]?.movieFile?.size ?? null;
+        dateAdded = movies[0]?.movieFile?.dateAdded ?? null;
+      }
+    } else {
+      const found = await findSeriesInSonarr(media, is4k);
+      if (found) {
+        size = found.series.statistics?.sizeOnDisk ?? null;
+        seasons =
+          found.series.seasons
+            ?.filter((season) => season.seasonNumber > 0)
+            .map((season) => ({
+              seasonNumber: season.seasonNumber,
+              size: season.statistics?.sizeOnDisk ?? 0,
+            })) ?? null;
+        try {
+          const files = await found.sonarr.getEpisodeFiles(found.series.id);
+          for (const file of files) {
+            if (
+              !dateAdded ||
+              Date.parse(file.dateAdded) > Date.parse(dateAdded)
+            ) {
+              dateAdded = file.dateAdded;
+            }
+          }
+        } catch {
+          // Series with no files or a Sonarr hiccup keeps dateAdded null.
+        }
+      }
+    }
+
+    if (sizeCacheEnabled) {
+      sizeCache.set(cacheKey, {
+        expires: Date.now() + SIZE_CACHE_TTL,
+        size,
+        seasons,
+        dateAdded,
+      });
+    }
+
+    return res.status(200).json({ size, seasons, dateAdded });
+  } catch (e) {
+    if (e instanceof EntityNotFoundError) {
+      return next({ status: 404, message: 'Media not found.' });
+    }
+    logger.error('Something went wrong retrieving media file size', {
+      label: 'Media',
+      mediaId: req.params.id,
+      message: e.message,
+    });
+    return next({
+      status: 500,
+      message: 'Unable to retrieve media file size.',
+    });
+  }
+});
+
+mediaRoutes.delete(
+  '/:id/season/:seasonNumber',
+  isAuthenticated(),
+  async (req, res, next) => {
+    try {
+      const is4k = String(req.query.is4k) === 'true';
+      const seasonNumber = Number(req.params.seasonNumber);
+      const mediaRepository = getRepository(Media);
+      const seasonRepository = getRepository(Season);
+
+      const media = await mediaRepository.findOneOrFail({
+        where: { id: Number(req.params.id) },
+        relations: {
+          requests: { requestedBy: true, seasons: true },
+          seasons: true,
+        },
+      });
+
+      if (media.mediaType !== MediaType.TV) {
+        return next({ status: 400, message: 'Media is not a series.' });
+      }
+
+      const canManageSeasonRequesters = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          request.status !== MediaRequestStatus.DECLINED &&
+          (request.seasons ?? []).some(
+            (season) => season.seasonNumber === seasonNumber
+          ) &&
+          (req.user?.canManageRequestsOf(request.requestedBy?.id ?? -1) ??
+            false)
+      );
+
+      if (
+        !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
+        !(
+          req.user?.hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+          media.isSeasonOwnedBy(req.user.id, is4k, seasonNumber)
+        ) &&
+        !canManageSeasonRequesters
+      ) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to delete this season.',
+        });
+      }
+
+      const found = await findSeriesInSonarr(media, is4k);
+
+      if (!found) {
+        const hasSonarrServers =
+          getSettings().sonarr.filter((server) => server.is4k === is4k).length >
+          0;
+        return next({
+          status: 409,
+          message: hasSonarrServers
+            ? 'Series not found in Sonarr; nothing was deleted.'
+            : 'No Sonarr server configured to delete season files',
+        });
+      }
+
+      const { sonarr, series } = found;
+
+      // The episode-file listing reliably carries the season number.
+      const seasonFileIds = (await sonarr.getEpisodeFiles(series.id))
+        .filter((file) => file.seasonNumber === seasonNumber)
+        .map((file) => file.id);
+
+      const seasonHasFilesOnDisk =
+        (series.seasons?.find((item) => item.seasonNumber === seasonNumber)
+          ?.statistics?.sizeOnDisk ?? 0) > 0;
+
+      if (seasonFileIds.length === 0 && seasonHasFilesOnDisk) {
+        return next({
+          status: 409,
+          message:
+            'Sonarr reports files for this season but none could be listed; nothing was deleted.',
+        });
+      }
+
+      if (seasonFileIds.length > 0) {
+        await sonarr.deleteEpisodeFiles(seasonFileIds);
+      }
+
+      // Unmonitor the season so Sonarr does not immediately re-download it.
+      // A failure here must not undo a successful file deletion.
+      try {
+        const seasonEpisodes = (await sonarr.getEpisodes(series.id)).filter(
+          (episode) => episode.seasonNumber === seasonNumber
+        );
+        if (seasonEpisodes.length > 0) {
+          await sonarr.setEpisodesMonitored(
+            seasonEpisodes.map((episode) => episode.id),
+            false
+          );
+        }
+      } catch (e) {
+        logger.warn('Failed to unmonitor deleted season episodes', {
+          label: 'Media',
+          mediaId: media.id,
+          seasonNumber,
+          message: e.message,
+        });
+      }
+
+      const statusField = is4k ? 'status4k' : 'status';
+      let season = media.seasons?.find(
+        (item) => item.seasonNumber === seasonNumber
+      );
+      if (!season) {
+        season = seasonRepository.create({ seasonNumber });
+        media.seasons.push(season);
+      }
+      season[statusField] = MediaStatus.DELETED;
+
+      // A still-active request for another season means the series is not gone,
+      // so only mark the whole media deleted when no requests remain active.
+      const hasActiveRequests = (media.requests ?? []).some(
+        (request) =>
+          request.is4k === is4k &&
+          (request.status === MediaRequestStatus.PENDING ||
+            request.status === MediaRequestStatus.APPROVED)
+      );
+      const seasonStatuses = media.seasons.map((item) => item[statusField]);
+
+      if (
+        !hasActiveRequests &&
+        seasonStatuses.every((status) => status === MediaStatus.DELETED)
+      ) {
+        media[statusField] = MediaStatus.DELETED;
+      } else if (
+        seasonStatuses.some((status) => status === MediaStatus.DELETED)
+      ) {
+        media[statusField] = MediaStatus.PARTIALLY_AVAILABLE;
+      }
+
+      await mediaRepository.save(media);
+
+      return res.status(204).send();
+    } catch (e) {
+      if (e instanceof EntityNotFoundError) {
+        return next({ status: 404, message: 'Media not found.' });
+      }
+      logger.error('Something went wrong deleting season files', {
+        label: 'Media',
+        mediaId: req.params.id,
+        seasonNumber: req.params.seasonNumber,
+        message: e.message,
+      });
+      return next({
+        status: 500,
+        message: 'Unable to delete season files.',
+      });
     }
   }
 );

@@ -3,13 +3,17 @@ import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import ConfirmButton from '@app/components/Common/ConfirmButton';
+import MediaAdded from '@app/components/MediaAdded';
+import MediaSize from '@app/components/MediaSize';
 import RequestModal from '@app/components/RequestModal';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
+import { useMediaSize } from '@app/hooks/useMediaSize';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { formatBytes } from '@app/utils/numberHelpers';
 import {
   getRequestDownloadStatus,
   refreshIntervalHelper,
@@ -45,6 +49,9 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   mediaerror: '{mediaType} Not Found',
   editrequest: 'Edit Request',
   deleterequest: 'Delete Request',
+  filesize: 'File Size',
+  seasonstorage: 'Per season',
+  downloaded: 'Downloaded',
   cancelRequest: 'Cancel Request',
   tmdbid: 'TMDB ID',
   tvdbid: 'TheTVDB ID',
@@ -60,21 +67,11 @@ const isMovie = (movie: MovieDetails | TvDetails): movie is MovieDetails => {
 
 interface RequestItemErrorProps {
   requestData?: NonFunctionProperties<MediaRequest>;
-  revalidateList: () => void;
 }
 
-const RequestItemError = ({
-  requestData,
-  revalidateList,
-}: RequestItemErrorProps) => {
+const RequestItemError = ({ requestData }: RequestItemErrorProps) => {
   const intl = useIntl();
   const { hasPermission } = useUser();
-
-  const deleteRequest = async () => {
-    await axios.delete(`/api/v1/media/${requestData?.media.id}`);
-    revalidateList();
-    mutate('/api/v1/request/count');
-  };
 
   const { mediaUrl: plexUrl, mediaUrl4k: plexUrl4k } = useDeepLinks({
     mediaUrl: requestData?.media?.mediaUrl,
@@ -275,18 +272,6 @@ const RequestItemError = ({
           )}
         </div>
       </div>
-      <div className="z-10 mt-4 flex w-full flex-col justify-center pl-4 pr-4 xl:mt-0 xl:w-96 xl:items-end xl:pl-0">
-        {hasPermission(Permission.MANAGE_REQUESTS) && requestData?.media.id && (
-          <Button
-            className="w-full"
-            buttonType="danger"
-            onClick={() => deleteRequest()}
-          >
-            <TrashIcon />
-            <span>{intl.formatMessage(messages.deleterequest)}</span>
-          </Button>
-        )}
-      </div>
     </div>
   );
 };
@@ -324,6 +309,8 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
     ),
   });
 
+  const mediaSize = useMediaSize(requestData?.media.id, requestData?.is4k);
+
   const [isRetrying, setRetrying] = useState(false);
   const [updatingType, setUpdatingType] = useState<
     'approve' | 'decline' | null
@@ -354,23 +341,34 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
   };
 
   const deleteMediaFile = async () => {
-    if (request.media) {
-      try {
+    if (!request.media) {
+      return;
+    }
+
+    try {
+      if (request.type === 'tv' && request.seasons.length > 0) {
+        // Never remove the whole series for a season request.
+        for (const season of request.seasons) {
+          await axios.delete(
+            `/api/v1/media/${request.media.id}/season/${season.seasonNumber}?is4k=${request.is4k}`
+          );
+        }
+      } else {
         await axios.delete(
           `/api/v1/media/${request.media.id}/file?is4k=${request.is4k}`
         );
-      } catch (e) {
-        if (!axios.isAxiosError(e) || e.response?.status !== 404) {
-          addToast(intl.formatMessage(messages.removemediaerror), {
-            autoDismiss: true,
-            appearance: 'error',
-          });
-          revalidateList();
-          return;
-        }
       }
-      revalidateList();
+    } catch (e) {
+      if (!axios.isAxiosError(e) || e.response?.status !== 404) {
+        addToast(intl.formatMessage(messages.removemediaerror), {
+          autoDismiss: true,
+          appearance: 'error',
+        });
+        revalidateList();
+        return;
+      }
     }
+    revalidateList();
   };
 
   const retryRequest = async () => {
@@ -407,10 +405,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
 
   if (!title || !requestData) {
     return (
-      <RequestItemError
-        requestData={requestData}
-        revalidateList={revalidateList}
-      />
+      <RequestItemError requestData={requestData} />
     );
   }
 
@@ -419,6 +414,14 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
     requestData.type === 'tv'
       ? requestData.seasons.map((season) => season.seasonNumber)
       : []
+  );
+
+  const canManageRequests = hasPermission(Permission.MANAGE_REQUESTS);
+  const canManageOwnRequests =
+    hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+    requestData.requestedBy.id === user?.id;
+  const canManageRequestedUser = (user?.managedUserIds ?? []).includes(
+    requestData.requestedBy.id
   );
 
   return (
@@ -562,11 +565,54 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                 />
               )}
             </div>
+            <MediaSize
+              mediaId={requestData.media.id}
+              is4k={requestData.is4k}
+              label={intl.formatMessage(messages.filesize)}
+              containerClassName="card-field"
+              labelClassName="card-field-name"
+              className="flex truncate text-sm text-gray-300"
+            />
+            <MediaAdded
+              mediaId={requestData.media.id}
+              is4k={requestData.is4k}
+              label={intl.formatMessage(messages.downloaded)}
+              containerClassName="card-field"
+              labelClassName="card-field-name"
+              className="flex truncate text-sm text-gray-300"
+            />
+            {requestData.type === 'tv' && requestData.seasons.length > 0 && (
+              <div className="card-field">
+                <span className="card-field-name">
+                  {intl.formatMessage(messages.seasonstorage)}
+                </span>
+                <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-300">
+                  {requestData.seasons.map((season) => {
+                    const size =
+                      mediaSize?.seasons?.find(
+                        (s) => s.seasonNumber === season.seasonNumber
+                      )?.size ?? 0;
+                    if (!size) {
+                      return null;
+                    }
+                    return (
+                      <span key={`season-size-${season.seasonNumber}`}>
+                        {season.seasonNumber === 0
+                          ? intl.formatMessage(globalMessages.specials)
+                          : `S${season.seasonNumber}`}
+                        : {formatBytes(size)}
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+            )}
             <div className="card-field">
-              {hasPermission(
+              {(hasPermission(
                 [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
                 { type: 'or' }
-              ) ? (
+              ) ||
+                requestData.requestedBy.id !== user?.id) ? (
                 <>
                   <span className="card-field-name">
                     {intl.formatMessage(messages.requested)}
@@ -701,32 +747,33 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
               </Button>
             )}
           {requestData.status !== MediaRequestStatus.PENDING &&
-            hasPermission(Permission.MANAGE_REQUESTS) && (
-              <>
-                <ConfirmButton
-                  onClick={() => deleteRequest()}
-                  confirmText={intl.formatMessage(globalMessages.areyousure)}
-                  className="w-full"
-                >
-                  <TrashIcon />
-                  <span>{intl.formatMessage(messages.deleterequest)}</span>
-                </ConfirmButton>
-                {request.canRemove && (
-                  <ConfirmButton
-                    onClick={() => deleteMediaFile()}
-                    confirmText={intl.formatMessage(globalMessages.areyousure)}
-                    className="w-full"
-                  >
-                    <TrashIcon />
-                    <span>
-                      {intl.formatMessage(messages.removearr, {
-                        arr: request.type === 'movie' ? 'Radarr' : 'Sonarr',
-                      })}
-                    </span>
-                  </ConfirmButton>
-                )}
-              </>
+            request.canRemove &&
+            (canManageRequests ||
+              canManageOwnRequests ||
+              canManageRequestedUser) && (
+              <ConfirmButton
+                onClick={() => deleteMediaFile()}
+                confirmText={intl.formatMessage(globalMessages.areyousure)}
+                className="w-full"
+              >
+                <TrashIcon />
+                <span>
+                  {intl.formatMessage(messages.removearr, {
+                    arr: request.type === 'movie' ? 'Radarr' : 'Sonarr',
+                  })}
+                </span>
+              </ConfirmButton>
             )}
+          {(canManageRequests || canManageRequestedUser) && (
+            <ConfirmButton
+              onClick={() => deleteRequest()}
+              confirmText={intl.formatMessage(globalMessages.areyousure)}
+              className="w-full"
+            >
+              <TrashIcon />
+              <span>{intl.formatMessage(messages.deleterequest)}</span>
+            </ConfirmButton>
+          )}
           {requestData.status === MediaRequestStatus.PENDING &&
             hasPermission(Permission.MANAGE_REQUESTS) && (
               <div className="flex w-full flex-row space-x-2">

@@ -389,6 +389,26 @@ class SonarrAPI extends ServarrBase<{
     }
   }
 
+  public async getEpisodeFiles(
+    seriesId: number
+  ): Promise<{ id: number; seasonNumber: number; dateAdded: string }[]> {
+    try {
+      const response = await this.axios.get<
+        { id: number; seasonNumber: number; dateAdded: string }[]
+      >('/episodefile', {
+        params: { seriesId },
+      });
+      return response.data;
+    } catch (e) {
+      logger.error('Failed to retrieve episode files', {
+        label: 'Sonarr API',
+        errorMessage: e.message,
+        seriesId,
+      });
+      throw new Error('Failed to get episode files', { cause: e });
+    }
+  }
+
   public async monitorEpisodes(episodeIds: number[]): Promise<void> {
     try {
       await this.axios.put('/episode/monitor', {
@@ -403,6 +423,40 @@ class SonarrAPI extends ServarrBase<{
       });
       throw new Error('Failed to monitor episodes', { cause: e });
     }
+  }
+
+  public async setEpisodesMonitored(
+    episodeIds: number[],
+    monitored: boolean
+  ): Promise<void> {
+    if (!episodeIds.length) {
+      return;
+    }
+    try {
+      await this.axios.put('/episode/monitor', {
+        episodeIds,
+        monitored,
+      });
+    } catch (e) {
+      logger.error('Failed to update episode monitoring', {
+        label: 'Sonarr API',
+        errorMessage: e.message,
+        episodeIds,
+      });
+      throw new Error('Failed to update episode monitoring', { cause: e });
+    }
+  }
+
+  public async deleteEpisodeFiles(episodeFileIds: number[]): Promise<void> {
+    await Promise.all(
+      episodeFileIds.map((id) =>
+        this.axios.delete(`/episodefile/${id}`).catch((e) => {
+          if (e?.response?.status !== 404) {
+            throw e;
+          }
+        })
+      )
+    );
   }
 
   private buildSeasonList(

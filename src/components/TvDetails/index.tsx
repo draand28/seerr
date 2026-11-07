@@ -8,6 +8,7 @@ import BlocklistModal from '@app/components/BlocklistModal';
 import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
+import ConfirmButton from '@app/components/Common/ConfirmButton';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import type { PlayButtonLink } from '@app/components/Common/PlayButton';
@@ -18,6 +19,8 @@ import Tooltip from '@app/components/Common/Tooltip';
 import ExternalLinkBlock from '@app/components/ExternalLinkBlock';
 import IssueModal from '@app/components/IssueModal';
 import ManageSlideOver from '@app/components/ManageSlideOver';
+import MediaAdded from '@app/components/MediaAdded';
+import MediaSize from '@app/components/MediaSize';
 import MediaSlider from '@app/components/MediaSlider';
 import PersonCard from '@app/components/PersonCard';
 import RequestButton from '@app/components/RequestButton';
@@ -27,6 +30,7 @@ import StatusBadge from '@app/components/StatusBadge';
 import Season from '@app/components/TvDetails/Season';
 import useDeepLinks from '@app/hooks/useDeepLinks';
 import useLocale from '@app/hooks/useLocale';
+import { useMediaSize } from '@app/hooks/useMediaSize';
 import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
@@ -34,6 +38,7 @@ import globalMessages from '@app/i18n/globalMessages';
 import ErrorPage from '@app/pages/_error';
 import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
+import { formatBytes } from '@app/utils/numberHelpers';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
 import {
   Disclosure,
@@ -51,6 +56,7 @@ import {
   MinusCircleIcon,
   PlayIcon,
   StarIcon,
+  TrashIcon,
 } from '@heroicons/react/24/solid';
 import type { RTRating } from '@server/api/rating/rottentomatoes';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
@@ -74,6 +80,8 @@ import useSWR from 'swr';
 
 const messages = defineMessages('components.TvDetails', {
   firstAirDate: 'First Air Date',
+  filesize: 'File Size',
+  filesize4k: '4K File Size',
   nextAirDate: 'Next Air Date',
   originallanguage: 'Original Language',
   overview: 'Overview',
@@ -100,6 +108,10 @@ const messages = defineMessages('components.TvDetails', {
   seasonstitle: 'Seasons',
   episodeCount: '{episodeCount, plural, one {# Episode} other {# Episodes}}',
   seasonnumber: 'Season {seasonNumber}',
+  deleteSeason: 'Delete season',
+  deleteSeason4k: 'Delete 4K season',
+  deleteSeasonConfirm: 'Delete this season\u2019s files?',
+  deleteSeasonError: 'Something went wrong while deleting the season.',
   status4k: '4K {status}',
   rtcriticsscore: 'Rotten Tomatoes Tomatometer',
   rtaudiencescore: 'Rotten Tomatoes Audience Score',
@@ -152,6 +164,30 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   const { data: ratingData } = useSWR<RTRating>(
     `/api/v1/tv/${router.query.tvId}/ratings`
   );
+
+  const sizeData = useMediaSize(data?.mediaInfo?.id, false);
+  const sizeData4k = useMediaSize(data?.mediaInfo?.id, true);
+
+  const deleteSeason = async (seasonNumber: number, is4k: boolean) => {
+    if (!data?.mediaInfo?.id) {
+      return;
+    }
+    try {
+      await axios.delete(
+        `/api/v1/media/${data.mediaInfo.id}/season/${seasonNumber}?is4k=${is4k}`
+      );
+      revalidate();
+    } catch (e) {
+      const message =
+        axios.isAxiosError(e) && e.response?.data?.message
+          ? e.response.data.message
+          : intl.formatMessage(messages.deleteSeasonError);
+      addToast(message, {
+        autoDismiss: true,
+        appearance: 'error',
+      });
+    }
+  };
 
   const sortedCrew = useMemo(
     () => sortCrewPriority(data?.credits.crew ?? []),
@@ -858,6 +894,25 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                       new Date(a.createdAt).getTime()
                   )[0];
 
+                const seasonSize =
+                  sizeData?.seasons?.find(
+                    (s) => s.seasonNumber === season.seasonNumber
+                  )?.size ?? 0;
+                const seasonSize4k =
+                  sizeData4k?.seasons?.find(
+                    (s) => s.seasonNumber === season.seasonNumber
+                  )?.size ?? 0;
+                const canDeleteSeason =
+                  hasPermission(Permission.MANAGE_REQUESTS) ||
+                  (hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+                    !!request &&
+                    request.requestedBy?.id === user?.id);
+                const canDeleteSeason4k =
+                  hasPermission(Permission.MANAGE_REQUESTS) ||
+                  (hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
+                    !!request4k &&
+                    request4k.requestedBy?.id === user?.id);
+
                 if (season.episodeCount === 0) {
                   return null;
                 }
@@ -886,6 +941,18 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                                 episodeCount: season.episodeCount,
                               })}
                             </Badge>
+                            {seasonSize > 0 && (
+                              <Badge badgeType="dark">
+                                {formatBytes(seasonSize)}
+                              </Badge>
+                            )}
+                            {show4k && seasonSize4k > 0 && (
+                              <Badge badgeType="dark">
+                                {intl.formatMessage(messages.status4k, {
+                                  status: formatBytes(seasonSize4k),
+                                })}
+                              </Badge>
+                            )}
                           </div>
                           {((!mSeason &&
                             request?.status === MediaRequestStatus.APPROVED) ||
@@ -1094,6 +1161,64 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                           style={{ margin: '0px' }}
                         >
                           <DisclosurePanel className="w-full rounded-b-md border-b border-l border-r border-gray-700 px-4 pb-2">
+                            {(canDeleteSeason ||
+                              (show4k && canDeleteSeason4k)) && (
+                              <div className="flex flex-wrap items-center justify-end gap-2 border-b border-gray-700 py-2">
+                                <div className="flex space-x-2">
+                                  {canDeleteSeason &&
+                                    (mSeason?.status ===
+                                      MediaStatus.AVAILABLE ||
+                                      mSeason?.status ===
+                                        MediaStatus.PARTIALLY_AVAILABLE) && (
+                                      <ConfirmButton
+                                        buttonSize="sm"
+                                        onClick={() =>
+                                          deleteSeason(
+                                            season.seasonNumber,
+                                            false
+                                          )
+                                        }
+                                        confirmText={intl.formatMessage(
+                                          messages.deleteSeasonConfirm
+                                        )}
+                                      >
+                                        <TrashIcon />
+                                        <span>
+                                          {intl.formatMessage(
+                                            messages.deleteSeason
+                                          )}
+                                        </span>
+                                      </ConfirmButton>
+                                    )}
+                                  {show4k &&
+                                    canDeleteSeason4k &&
+                                    (mSeason4k?.status4k ===
+                                      MediaStatus.AVAILABLE ||
+                                      mSeason4k?.status4k ===
+                                        MediaStatus.PARTIALLY_AVAILABLE) && (
+                                      <ConfirmButton
+                                        buttonSize="sm"
+                                        onClick={() =>
+                                          deleteSeason(
+                                            season.seasonNumber,
+                                            true
+                                          )
+                                        }
+                                        confirmText={intl.formatMessage(
+                                          messages.deleteSeasonConfirm
+                                        )}
+                                      >
+                                        <TrashIcon />
+                                        <span>
+                                          {intl.formatMessage(
+                                            messages.deleteSeason4k
+                                          )}
+                                        </span>
+                                      </ConfirmButton>
+                                    )}
+                                </div>
+                              </div>
+                            )}
                             <Season
                               tvId={data.id}
                               seasonNumber={season.seasonNumber}
@@ -1187,6 +1312,27 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
               <span>{intl.formatMessage(globalMessages.status)}</span>
               <span className="media-fact-value">{data.status}</span>
             </div>
+            <MediaSize
+              mediaId={data.mediaInfo?.id}
+              label={intl.formatMessage(messages.filesize)}
+              containerClassName="media-fact"
+              className="media-fact-value"
+            />
+            <MediaAdded
+              mediaId={data.mediaInfo?.id}
+              containerClassName="media-fact"
+              className="media-fact-value"
+            />
+            {settings.currentSettings.series4kEnabled &&
+              data.mediaInfo?.id && (
+                <MediaSize
+                  mediaId={data.mediaInfo?.id}
+                  is4k
+                  label={intl.formatMessage(messages.filesize4k)}
+                  containerClassName="media-fact"
+                  className="media-fact-value"
+                />
+              )}
             {data.firstAirDate && (
               <div className="media-fact">
                 <span>{intl.formatMessage(messages.firstAirDate)}</span>
