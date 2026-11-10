@@ -21,6 +21,7 @@ import type {
   MediaRequestBody,
   RequestResultsResponse,
 } from '@server/interfaces/api/requestInterfaces';
+import { getUserStorage } from '@server/lib/mediaUsage';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -345,6 +346,25 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
           message: 'You must be logged in to request media.',
         });
       }
+
+      if (!req.user.hasPermission(Permission.MANAGE_REQUESTS)) {
+        const quotaGb = req.user.storageQuotaGb ?? 0;
+
+        if (quotaGb > 0) {
+          const storage = await getUserStorage();
+          const usage = storage.get(req.user.id)?.size ?? 0;
+
+          if (usage >= quotaGb * 1024 ** 3) {
+            return next({
+              status: 403,
+              message: `Storage quota exceeded (${Math.round(
+                usage / 1024 ** 3
+              )} GB of ${quotaGb} GB used).`,
+            });
+          }
+        }
+      }
+
       const request = await MediaRequest.request(req.body, req.user);
 
       return res.status(201).json(request);

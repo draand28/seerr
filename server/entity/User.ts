@@ -130,6 +130,9 @@ export class User {
   })
   public managedUserIds?: number[] | null;
 
+  @Column({ type: 'integer', nullable: true, default: 200 })
+  public storageQuotaGb?: number | null;
+
   @Column()
   public avatar: string;
 

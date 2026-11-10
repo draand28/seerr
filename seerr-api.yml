@@ -4795,6 +4795,62 @@ paths:
                     type: array
                     items:
                       type: number
+  /user/{userId}/storage_quota:
+    get:
+      summary: Get a user's storage quota
+      description: Returns the maximum storage (in GB) the user may consume. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Storage quota in GB
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quotaGb:
+                    type: number
+                    example: 200
+    post:
+      summary: Set a user's storage quota
+      description: Sets the maximum storage (in GB) the user may consume. 0 means unlimited. Requires `MANAGE_USERS`.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - quotaGb
+              properties:
+                quotaGb:
+                  type: number
+                  example: 200
+      responses:
+        '200':
+          description: Updated storage quota in GB
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quotaGb:
+                    type: number
   /user/{userId}/quota:
     get:
       summary: Get quotas for a specific user

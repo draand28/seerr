@@ -14,6 +14,7 @@ import type { WatchlistResponse } from '@server/interfaces/api/discoverInterface
 import type {
   ManagedUsersResponse,
   QuotaResponse,
+  StorageQuotaResponse,
   UserRequestsResponse,
   UserResultsResponse,
   UserStorageResponse,
@@ -876,6 +877,50 @@ router.post<{ id: string }, ManagedUsersResponse, { userIds: number[] }>(
       await userRepository.save(user);
 
       return res.status(200).json({ userIds });
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
+
+router.get<{ id: string }, StorageQuotaResponse>(
+  '/:id/storage_quota',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    try {
+      const user = await getRepository(User).findOneOrFail({
+        where: { id: Number(req.params.id) },
+      });
+      return res.status(200).json({ quotaGb: user.storageQuotaGb ?? 0 });
+    } catch {
+      next({ status: 404, message: 'User not found.' });
+    }
+  }
+);
+
+router.post<{ id: string }, StorageQuotaResponse, { quotaGb: number }>(
+  '/:id/storage_quota',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    try {
+      const userRepository = getRepository(User);
+      const user = await userRepository.findOneOrFail({
+        where: { id: Number(req.params.id) },
+      });
+
+      const quotaGb = Number(req.body.quotaGb);
+
+      if (!Number.isFinite(quotaGb) || quotaGb < 0) {
+        return next({
+          status: 400,
+          message: 'Storage quota must be a non-negative number.',
+        });
+      }
+
+      user.storageQuotaGb = Math.round(quotaGb);
+      await userRepository.save(user);
+
+      return res.status(200).json({ quotaGb: user.storageQuotaGb });
     } catch (e) {
       next({ status: 500, message: e.message });
     }

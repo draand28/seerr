@@ -40,3 +40,7 @@ export interface UserStorageResponse {
 export interface ManagedUsersResponse {
   userIds: number[];
 }
+
+export interface StorageQuotaResponse {
+  quotaGb: number;
+}
