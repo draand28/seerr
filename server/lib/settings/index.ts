@@ -97,6 +97,10 @@ export interface RadarrSettings extends DVRSettings {
 export interface SonarrSettings extends DVRSettings {
   seriesType: 'standard' | 'daily' | 'anime';
   animeSeriesType: 'standard' | 'daily' | 'anime';
+  /** Quality profile used for series when the requester prefers HDR. */
+  hdrProfileId?: number;
+  /** Quality profile used for series when the requester prefers SDR. */
+  sdrProfileId?: number;
   activeAnimeProfileId?: number;
   activeAnimeProfileName?: string;
   activeAnimeDirectory?: string;

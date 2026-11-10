@@ -56,6 +56,13 @@ const messages = defineMessages('components.Settings.SonarrModal', {
   server4kHelp:
     'Only if you have a separate 4K instance. Leave unchecked for a single server.',
   selectQualityProfile: 'Select quality profile',
+  hdrprofile: 'HDR Quality Profile',
+  hdrProfileHelp:
+    'Profile used for series when the requester prefers HDR. Leave empty to always use the quality profile above.',
+  sdrprofile: 'SDR Quality Profile',
+  sdrProfileHelp:
+    'Profile used for series when the requester prefers SDR. Leave empty to always use the quality profile above.',
+  noProfileOverride: 'Use quality profile above',
   selectRootFolder: 'Select root folder',
   selectLanguageProfile: 'Select language profile',
   loadingprofiles: 'Loading quality profiles…',
@@ -245,6 +252,8 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
           apiKey: sonarr?.apiKey,
           baseUrl: sonarr?.baseUrl,
           activeProfileId: sonarr?.activeProfileId,
+          hdrProfileId: sonarr?.hdrProfileId ?? '',
+          sdrProfileId: sonarr?.sdrProfileId ?? '',
           activeLanguageProfileId: sonarr?.activeLanguageProfileId,
           rootFolder: sonarr?.activeDirectory,
           seriesType: sonarr?.seriesType,
@@ -281,6 +290,12 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
               useSsl: values.ssl,
               baseUrl: values.baseUrl,
               activeProfileId: Number(values.activeProfileId),
+              hdrProfileId: values.hdrProfileId
+                ? Number(values.hdrProfileId)
+                : undefined,
+              sdrProfileId: values.sdrProfileId
+                ? Number(values.sdrProfileId)
+                : undefined,
               activeLanguageProfileId: values.activeLanguageProfileId
                 ? Number(values.activeLanguageProfileId)
                 : undefined,
@@ -629,6 +644,49 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
                       )}
                   </div>
                 </div>
+                {[
+                  {
+                    name: 'hdrProfileId',
+                    label: messages.hdrprofile,
+                    help: messages.hdrProfileHelp,
+                  },
+                  {
+                    name: 'sdrProfileId',
+                    label: messages.sdrprofile,
+                    help: messages.sdrProfileHelp,
+                  },
+                ].map((override) => (
+                  <div className="form-row" key={override.name}>
+                    <label htmlFor={override.name} className="text-label">
+                      {intl.formatMessage(override.label)}
+                      <span className="label-tip">
+                        {intl.formatMessage(override.help)}
+                      </span>
+                    </label>
+                    <div className="form-input-area">
+                      <div className="form-input-field">
+                        <Field
+                          as="select"
+                          id={override.name}
+                          name={override.name}
+                          disabled={!isValidated || isTesting}
+                        >
+                          <option value="">
+                            {intl.formatMessage(messages.noProfileOverride)}
+                          </option>
+                          {testResponse.profiles.map((profile) => (
+                            <option
+                              key={`${override.name}-${profile.id}`}
+                              value={profile.id}
+                            >
+                              {profile.name}
+                            </option>
+                          ))}
+                        </Field>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 <div className="form-row">
                   <label htmlFor="rootFolder" className="text-label">
                     {intl.formatMessage(messages.rootfolder)}
