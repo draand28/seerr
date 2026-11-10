@@ -1,6 +1,6 @@
 {
   "name": "seerr",
-  "version": "3.5.1-fork.2",
+  "version": "3.5.1-fork.3",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "scripts": {
@@ -213,7 +213,8 @@
     "overrides": {
       "@types/express-session": "1.18.2",
       "@types/react": "19.2.14",
-      "@types/react-dom": "19.2.3"
+      "@types/react-dom": "19.2.3",
+      "nodemailer": "10.2.1"
     }
   },
   "scarfSettings": {
