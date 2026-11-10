@@ -63,6 +63,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         globalTvQuotaLimit: defaultQuotas.tv.quotaLimit,
         watchlistSyncMovies: user.settings?.watchlistSyncMovies,
         watchlistSyncTv: user.settings?.watchlistSyncTv,
+        hdrPreference: user.hdrPreference ?? null,
       });
     } catch (e) {
       next({ status: 500, message: e.message });
@@ -138,10 +139,19 @@ userSettingsRoutes.post<
       user.settings.watchlistSyncTv = req.body.watchlistSyncTv;
     }
 
+    if (
+      req.body.hdrPreference === 'hdr' ||
+      req.body.hdrPreference === 'sdr' ||
+      req.body.hdrPreference === null
+    ) {
+      user.hdrPreference = req.body.hdrPreference;
+    }
+
     const savedUser = await userRepository.save(user);
 
     return res.status(200).json({
       username: savedUser.username,
+      hdrPreference: savedUser.hdrPreference ?? null,
       locale: savedUser.settings?.locale,
       discoverRegion: savedUser.settings?.discoverRegion,
       streamingRegion: savedUser.settings?.streamingRegion,

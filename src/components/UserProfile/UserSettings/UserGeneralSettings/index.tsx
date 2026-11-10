@@ -69,6 +69,12 @@ const messages = defineMessages(
     plexwatchlistsyncseries: 'Auto-Request Series',
     plexwatchlistsyncseriestip:
       'Automatically request series on your <PlexWatchlistSupportLink>Plex Watchlist</PlexWatchlistSupportLink>',
+    hdrPreference: 'Preferred Video Version',
+    hdrPreferenceTip:
+      'Choose which quality profile to use for your movie requests. Applies only when your admin has configured HDR and SDR profiles.',
+    hdrNone: 'No preference',
+    hdrPreferHdr: 'Prefer HDR',
+    hdrPreferSdr: 'Prefer SDR',
   }
 );
 
@@ -161,6 +167,7 @@ const UserGeneralSettings = () => {
           tvQuotaDays: data?.tvQuotaDays,
           watchlistSyncMovies: data?.watchlistSyncMovies,
           watchlistSyncTv: data?.watchlistSyncTv,
+          hdrPreference: data?.hdrPreference ?? '',
         }}
         validationSchema={UserGeneralSettingsSchema}
         enableReinitialize
@@ -182,6 +189,7 @@ const UserGeneralSettings = () => {
               tvQuotaDays: tvQuotaEnabled ? values.tvQuotaDays : null,
               watchlistSyncMovies: values.watchlistSyncMovies,
               watchlistSyncTv: values.watchlistSyncTv,
+              hdrPreference: values.hdrPreference || null,
             });
 
             if (currentUser?.id === user?.id && setLocale) {
@@ -362,6 +370,33 @@ const UserGeneralSettings = () => {
                   </div>
                 </div>
               </div>
+              {hasPermission([Permission.REQUEST, Permission.REQUEST_4K], {
+                type: 'or',
+              }) && (
+                <div className="form-row">
+                  <label htmlFor="hdrPreference" className="text-label">
+                    <span>{intl.formatMessage(messages.hdrPreference)}</span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.hdrPreferenceTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <Field as="select" id="hdrPreference" name="hdrPreference">
+                        <option value="">
+                          {intl.formatMessage(messages.hdrNone)}
+                        </option>
+                        <option value="hdr">
+                          {intl.formatMessage(messages.hdrPreferHdr)}
+                        </option>
+                        <option value="sdr">
+                          {intl.formatMessage(messages.hdrPreferSdr)}
+                        </option>
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <label htmlFor="discoverRegion" className="text-label">
                   <span>{intl.formatMessage(messages.discoverRegion)}</span>

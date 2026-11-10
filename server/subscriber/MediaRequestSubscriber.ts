@@ -294,6 +294,30 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           );
         }
 
+        // The requester's HDR/SDR preference only applies when no more specific
+        // profile was chosen (advanced request or override rule).
+        if (qualityProfile === radarrSettings.activeProfileId) {
+          const preference = entity.requestedBy?.hdrPreference;
+          const preferredProfile =
+            preference === 'hdr'
+              ? radarrSettings.hdrProfileId
+              : preference === 'sdr'
+                ? radarrSettings.sdrProfileId
+                : undefined;
+
+          if (preferredProfile) {
+            qualityProfile = preferredProfile;
+            logger.info(
+              `Request has a ${preference} quality profile preference: ${qualityProfile}`,
+              {
+                label: 'Media Request',
+                requestId: entity.id,
+                mediaId: entity.media.id,
+              }
+            );
+          }
+        }
+
         if (
           useRequestOverrides &&
           entity.tags &&

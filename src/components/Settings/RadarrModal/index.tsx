@@ -52,6 +52,13 @@ const messages = defineMessages('components.Settings.RadarrModal', {
   server4kHelp:
     'Only if you have a separate 4K instance. Leave unchecked for a single server.',
   selectQualityProfile: 'Select quality profile',
+  hdrprofile: 'HDR Quality Profile',
+  hdrProfileHelp:
+    'Profile used for movies when the requester prefers HDR. Leave empty to always use the quality profile above.',
+  sdrprofile: 'SDR Quality Profile',
+  sdrProfileHelp:
+    'Profile used for movies when the requester prefers SDR. Leave empty to always use the quality profile above.',
+  noProfileOverride: 'Use quality profile above',
   selectRootFolder: 'Select root folder',
   selectMinimumAvailability: 'Select minimum availability',
   loadingprofiles: 'Loading quality profiles…',
@@ -233,6 +240,8 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
           apiKey: radarr?.apiKey,
           baseUrl: radarr?.baseUrl,
           activeProfileId: radarr?.activeProfileId,
+          hdrProfileId: radarr?.hdrProfileId ?? '',
+          sdrProfileId: radarr?.sdrProfileId ?? '',
           rootFolder: radarr?.activeDirectory,
           minimumAvailability: radarr?.minimumAvailability ?? 'released',
           tags: radarr?.tags ?? [],
@@ -259,6 +268,12 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
               baseUrl: values.baseUrl,
               activeProfileId: Number(values.activeProfileId),
               activeProfileName: profileName,
+              hdrProfileId: values.hdrProfileId
+                ? Number(values.hdrProfileId)
+                : undefined,
+              sdrProfileId: values.sdrProfileId
+                ? Number(values.sdrProfileId)
+                : undefined,
               activeDirectory: values.rootFolder,
               is4k: values.is4k,
               minimumAvailability: values.minimumAvailability,
@@ -570,6 +585,49 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
                       )}
                   </div>
                 </div>
+                {[
+                  {
+                    name: 'hdrProfileId',
+                    label: messages.hdrprofile,
+                    help: messages.hdrProfileHelp,
+                  },
+                  {
+                    name: 'sdrProfileId',
+                    label: messages.sdrprofile,
+                    help: messages.sdrProfileHelp,
+                  },
+                ].map((override) => (
+                  <div className="form-row" key={override.name}>
+                    <label htmlFor={override.name} className="text-label">
+                      {intl.formatMessage(override.label)}
+                      <span className="label-tip">
+                        {intl.formatMessage(override.help)}
+                      </span>
+                    </label>
+                    <div className="form-input-area">
+                      <div className="form-input-field">
+                        <Field
+                          as="select"
+                          id={override.name}
+                          name={override.name}
+                          disabled={!isValidated || isTesting}
+                        >
+                          <option value="">
+                            {intl.formatMessage(messages.noProfileOverride)}
+                          </option>
+                          {testResponse.profiles.map((profile) => (
+                            <option
+                              key={`${override.name}-${profile.id}`}
+                              value={profile.id}
+                            >
+                              {profile.name}
+                            </option>
+                          ))}
+                        </Field>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 <div className="form-row">
                   <label htmlFor="rootFolder" className="text-label">
                     {intl.formatMessage(messages.rootfolder)}

@@ -133,6 +133,9 @@ export class User {
   @Column({ type: 'integer', nullable: true, default: 200 })
   public storageQuotaGb?: number | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  public hdrPreference?: 'hdr' | 'sdr' | null;
+
   @Column()
   public avatar: string;
 

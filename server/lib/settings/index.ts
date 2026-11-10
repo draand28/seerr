@@ -88,6 +88,10 @@ export interface DVRSettings {
 
 export interface RadarrSettings extends DVRSettings {
   minimumAvailability: string;
+  /** Quality profile used for movies when the requester prefers HDR. */
+  hdrProfileId?: number;
+  /** Quality profile used for movies when the requester prefers SDR. */
+  sdrProfileId?: number;
 }
 
 export interface SonarrSettings extends DVRSettings {
