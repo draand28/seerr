@@ -13,6 +13,7 @@ import {
 import {
   ArrowRightOnRectangleIcon,
   ClockIcon,
+  QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { CogIcon, UserIcon } from '@heroicons/react/24/solid';
 import axios from 'axios';
@@ -31,6 +32,7 @@ const messages = defineMessages('components.Layout.UserDropdown', {
   myprofile: 'Profile',
   settings: 'Settings',
   requests: 'Requests',
+  help: 'Help',
   signout: 'Sign Out',
 });
 
@@ -180,6 +182,21 @@ const UserDropdown = () => {
                   >
                     <ClockIcon className="mr-2 inline h-5 w-5" />
                     <span>{intl.formatMessage(messages.requests)}</span>
+                  </ForwardedLink>
+                )}
+              </MenuItem>
+              <MenuItem>
+                {({ active }) => (
+                  <ForwardedLink
+                    href={`/help`}
+                    className={`flex items-center rounded px-4 py-2 text-sm font-medium text-gray-200 transition duration-150 ease-in-out ${
+                      active
+                        ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white'
+                        : ''
+                    }`}
+                  >
+                    <QuestionMarkCircleIcon className="mr-2 inline h-5 w-5" />
+                    <span>{intl.formatMessage(messages.help)}</span>
                   </ForwardedLink>
                 )}
               </MenuItem>
