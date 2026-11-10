@@ -55,6 +55,7 @@ router.get<unknown, StatusResponse>('/status', async (req, res) => {
   const settings = getSettings();
   const currentVersion = getAppVersion();
   const commitTag = getCommitTag();
+  const isForkBuild = currentVersion.includes('-fork');
   const checkUpdate =
     req.query.checkUpdateAvailable !== undefined
       ? req.query.checkUpdateAvailable
@@ -62,7 +63,7 @@ router.get<unknown, StatusResponse>('/status', async (req, res) => {
   let updateAvailable = false;
   let commitsBehind = 0;
 
-  if (checkUpdate) {
+  if (checkUpdate && !isForkBuild) {
     const githubApi = new GithubAPI();
 
     if (currentVersion.startsWith('develop-') && commitTag !== 'local') {

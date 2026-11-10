@@ -27,7 +27,7 @@ const messages = defineMessages('components.Help', {
     'Admins can let a user manage the requests of other users.\n\n- On the user Permissions page, set "Manage requests of" and pick the users.\n- That user can then view and delete requests belonging to the selected users.\n- Admins can always delete any request from the request list.',
   adminTitle: 'Admin quick reference',
   adminBody:
-    '- User Permissions page: permissions, "Manage requests of", storage quota and current usage.\n- Settings, Services: HDR and SDR quality profiles per Radarr and Sonarr server.\n- Request list: delete any user\'s request.\n- The version badge in the sidebar shows the build commit and build date.',
+    '- User Permissions page: permissions, "Manage requests of", storage quota and current usage.\n- Settings, Services: HDR and SDR quality profiles per Radarr and Sonarr server.\n- Request list: delete any user\'s request.\n- The version badge in the sidebar shows the build commit and build date.\n- Image tags: latest is the newest build, 3.5.1-fork.N is a pinned release, 3.5-fork is the newest build on that base, and sha-<commit> pins an exact commit. In TrueNAS SCALE use image ghcr.io/draand28/seerr and pick the tag you want.',
 });
 
 const sectionKeys = [
