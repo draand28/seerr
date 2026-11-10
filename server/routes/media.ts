@@ -25,6 +25,40 @@ import { EntityNotFoundError, In, IsNull, Not } from 'typeorm';
 
 const mediaRoutes = Router();
 
+// Newly downloaded media cannot be deleted for this long (anti hit-and-run).
+const DELETE_HOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Returns the timestamp before which a newly available media must not be
+ * deleted. Uses the last availability update as a proxy for "downloaded at".
+ * shortcut: updatedAt moves on any edit, so this can over-hold; switch to a
+ * dedicated availableAt column if exact windows matter.
+ */
+function getDeleteHoldUnlockAt(
+  media: Media,
+  is4k: boolean
+): number | undefined {
+  const statusField = is4k ? 'status4k' : 'status';
+  const isAvailable = (status: MediaStatus): boolean =>
+    status === MediaStatus.AVAILABLE ||
+    status === MediaStatus.PARTIALLY_AVAILABLE;
+  const times: number[] = [];
+
+  if (isAvailable(media[statusField])) {
+    times.push(media.updatedAt.getTime());
+  }
+
+  if (media.mediaType === MediaType.TV) {
+    for (const season of media.seasons ?? []) {
+      if (isAvailable(season[statusField])) {
+        times.push(season.updatedAt.getTime());
+      }
+    }
+  }
+
+  return times.length ? Math.max(...times) + DELETE_HOLD_MS : undefined;
+}
+
 /**
  * Finds a series in Sonarr even when Seerr's TVDB id differs from Sonarr's.
  * Tries tvdbId, then imdbId, then the TMDB title, across configured servers.
@@ -317,6 +351,19 @@ mediaRoutes.delete(
         });
       }
 
+      if (!req.user?.hasPermission(Permission.MANAGE_REQUESTS)) {
+        const unlockAt = getDeleteHoldUnlockAt(media, is4k);
+
+        if (unlockAt && Date.now() < unlockAt) {
+          return next({
+            status: 423,
+            message: `This media was added recently and cannot be deleted until ${new Date(
+              unlockAt
+            ).toISOString()}.`,
+          });
+        }
+      }
+
       let serviceSettings;
       if (isMovie) {
         serviceSettings = settings.radarr.find(
@@ -575,6 +622,30 @@ mediaRoutes.delete(
           status: 403,
           message: 'You do not have permission to delete this season.',
         });
+      }
+
+      if (!req.user?.hasPermission(Permission.MANAGE_REQUESTS)) {
+        const existingSeason = media.seasons?.find(
+          (item) => item.seasonNumber === seasonNumber
+        );
+        const statusField = is4k ? 'status4k' : 'status';
+
+        if (
+          existingSeason &&
+          (existingSeason[statusField] === MediaStatus.AVAILABLE ||
+            existingSeason[statusField] === MediaStatus.PARTIALLY_AVAILABLE)
+        ) {
+          const unlockAt = existingSeason.updatedAt.getTime() + DELETE_HOLD_MS;
+
+          if (Date.now() < unlockAt) {
+            return next({
+              status: 423,
+              message: `This season was added recently and cannot be deleted until ${new Date(
+                unlockAt
+              ).toISOString()}.`,
+            });
+          }
+        }
       }
 
       const found = await findSeriesInSonarr(media, is4k);
