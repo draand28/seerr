@@ -67,6 +67,7 @@ import {
   MediaType,
 } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
+import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import type { Crew } from '@server/models/common';
 import axios from 'axios';
@@ -115,6 +116,7 @@ const messages = defineMessages('components.TvDetails', {
   seasonstitle: 'Seasons',
   episodeCount: '{episodeCount, plural, one {# Episode} other {# Episodes}}',
   seasonnumber: 'Season {seasonNumber}',
+  requestedBy: 'Requested by {name}',
   deleteSeason: 'Delete season',
   deleteSeason4k: 'Delete 4K season',
   deleteSeasonConfirm: 'Delete this season\u2019s files?',
@@ -293,6 +295,33 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
       <span className="rounded-md border p-0.5 py-0">{contentRating}</span>
     );
   }
+
+  // Show who asked for this series next to the status badge. Managers see every
+  // requester; other users only see their own name.
+  const findRequester = (requests: MediaRequest[] | undefined, is4k: boolean) => {
+    const latest = (requests ?? [])
+      .filter((r) => r.is4k === is4k && r.status !== MediaRequestStatus.DECLINED)
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+    if (!latest) {
+      return { hasRequest: false, name: undefined };
+    }
+
+    const canSeeName =
+      hasPermission(Permission.MANAGE_REQUESTS) ||
+      latest.requestedBy?.id === user?.id;
+
+    return {
+      hasRequest: true,
+      name: canSeeName ? latest.requestedBy?.displayName : undefined,
+    };
+  };
+
+  const tvRequester = findRequester(data?.mediaInfo?.requests, false);
+  const tvRequester4k = findRequester(data?.mediaInfo?.requests, true);
 
   // Does NOT include "Specials"
   const seasonCount = data.seasons.filter(
@@ -620,6 +649,8 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
               mediaType="tv"
               plexUrl={plexUrl}
               serviceUrl={data.mediaInfo?.serviceUrl}
+              requestedBy={tvRequester.name}
+              hasRequest={tvRequester.hasRequest}
             />
             {settings.currentSettings.series4kEnabled &&
               hasPermission(
@@ -644,6 +675,8 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                   mediaType="tv"
                   plexUrl={plexUrl4k}
                   serviceUrl={data.mediaInfo?.serviceUrl4k}
+                  requestedBy={tvRequester4k.name}
+                  hasRequest={tvRequester4k.hasRequest}
                 />
               )}
           </div>
@@ -913,6 +946,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                   sizeData4k?.seasons?.find(
                     (s) => s.seasonNumber === season.seasonNumber
                   )?.size ?? 0;
+                const seasonRequester =
+                  request?.requestedBy &&
+                  (hasPermission(Permission.MANAGE_REQUESTS) ||
+                    request.requestedBy.id === user?.id)
+                    ? request.requestedBy.displayName
+                    : undefined;
                 const canDeleteSeason =
                   hasPermission(Permission.MANAGE_REQUESTS) ||
                   (hasPermission(Permission.MANAGE_OWN_REQUESTS) &&
@@ -973,7 +1012,18 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                             <>
                               <div className="hidden md:flex">
                                 <Badge badgeType="primary">
-                                  {intl.formatMessage(globalMessages.requested)}
+                                  {request
+                                    ? seasonRequester
+                                      ? intl.formatMessage(
+                                          messages.requestedBy,
+                                          { name: seasonRequester }
+                                        )
+                                      : intl.formatMessage(
+                                          globalMessages.requested
+                                        )
+                                    : intl.formatMessage(
+                                        globalMessages.processing
+                                      )}
                                 </Badge>
                               </div>
                               <div className="flex md:hidden">

@@ -14,6 +14,7 @@ import { useIntl } from 'react-intl';
 const messages = defineMessages('components.StatusBadge', {
   status: '{status}',
   status4k: '4K {status}',
+  requestedby: 'Requested by {name}',
   playonplex: 'Play on {mediaServerName}',
   openinarr: 'Open in {arr}',
   managemedia: 'Manage {mediaType}',
@@ -32,6 +33,10 @@ interface StatusBadgeProps {
   mediaType?: 'movie' | 'tv';
   title?: string | string[];
   statusLabelOverride?: string;
+  /** Name of the user who requested this media, when known. */
+  requestedBy?: string | null;
+  /** True when an active request exists, even if the requester is hidden. */
+  hasRequest?: boolean;
 }
 
 const StatusBadge = ({
@@ -45,6 +50,8 @@ const StatusBadge = ({
   mediaType,
   title,
   statusLabelOverride,
+  requestedBy,
+  hasRequest = false,
 }: StatusBadgeProps) => {
   const intl = useIntl();
   const { hasPermission } = useUser();
@@ -315,7 +322,13 @@ const StatusBadge = ({
                   {
                     status: inProgress
                       ? intl.formatMessage(globalMessages.processing)
-                      : intl.formatMessage(globalMessages.requested),
+                      : requestedBy
+                        ? intl.formatMessage(messages.requestedby, {
+                            name: requestedBy,
+                          })
+                        : hasRequest
+                          ? intl.formatMessage(globalMessages.requested)
+                          : intl.formatMessage(globalMessages.processing),
                   }
                 )}
               </span>
@@ -355,7 +368,9 @@ const StatusBadge = ({
         <Tooltip content={mediaLinkDescription}>
           <Badge badgeType="warning" href={mediaLink}>
             {intl.formatMessage(is4k ? messages.status4k : messages.status, {
-              status: intl.formatMessage(globalMessages.pending),
+              status: requestedBy
+                ? intl.formatMessage(messages.requestedby, { name: requestedBy })
+                : intl.formatMessage(globalMessages.pending),
             })}
           </Badge>
         </Tooltip>

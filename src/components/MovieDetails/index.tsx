@@ -52,8 +52,9 @@ import {
 } from '@heroicons/react/24/solid';
 import { type RatingResponse } from '@server/api/ratings';
 import { IssueStatus } from '@server/constants/issue';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import { MediaStatus, MediaRequestStatus, MediaType } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
+import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { MovieDetails as MovieDetailsType } from '@server/models/Movie';
 import axios from 'axios';
 import { countries } from 'country-flag-icons';
@@ -161,6 +162,33 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
     () => sortCrewPriority(data?.credits.crew ?? []),
     [data]
   );
+
+  // Show who asked for this title next to the status badge. Managers see every
+  // requester; other users only see their own name.
+  const findRequester = (requests: MediaRequest[] | undefined, is4k: boolean) => {
+    const latest = (requests ?? [])
+      .filter((r) => r.is4k === is4k && r.status !== MediaRequestStatus.DECLINED)
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+    if (!latest) {
+      return { hasRequest: false, name: undefined };
+    }
+
+    const canSeeName =
+      hasPermission(Permission.MANAGE_REQUESTS) ||
+      latest.requestedBy?.id === user?.id;
+
+    return {
+      hasRequest: true,
+      name: canSeeName ? latest.requestedBy?.displayName : undefined,
+    };
+  };
+
+  const movieRequester = findRequester(data?.mediaInfo?.requests, false);
+  const movieRequester4k = findRequester(data?.mediaInfo?.requests, true);
 
   useEffect(() => {
     if (router.query.manage === '1') {
@@ -532,6 +560,8 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
               mediaType="movie"
               plexUrl={plexUrl}
               serviceUrl={data.mediaInfo?.serviceUrl}
+              requestedBy={movieRequester.name}
+              hasRequest={movieRequester.hasRequest}
             />
             {settings.currentSettings.movie4kEnabled &&
               hasPermission(
@@ -556,6 +586,8 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                   mediaType="movie"
                   plexUrl={plexUrl4k}
                   serviceUrl={data.mediaInfo?.serviceUrl4k}
+                  requestedBy={movieRequester4k.name}
+                  hasRequest={movieRequester4k.hasRequest}
                 />
               )}
           </div>
