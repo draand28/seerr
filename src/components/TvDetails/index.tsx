@@ -66,7 +66,7 @@ import {
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
-import { MediaServerType } from '@server/constants/server';
+import { MediaServerType, ServerType } from '@server/constants/server';
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import type { Crew } from '@server/models/common';
@@ -419,26 +419,38 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
 
   function getAvailableMediaServerName() {
     if (settings.currentSettings.mediaServerType === MediaServerType.EMBY) {
-      return intl.formatMessage(messages.play, { mediaServerName: 'Emby' });
+      return intl.formatMessage(messages.play, {
+        mediaServerName: ServerType.EMBY,
+      });
     }
 
     if (settings.currentSettings.mediaServerType === MediaServerType.PLEX) {
-      return intl.formatMessage(messages.play, { mediaServerName: 'Plex' });
+      return intl.formatMessage(messages.play, {
+        mediaServerName: ServerType.PLEX,
+      });
     }
 
-    return intl.formatMessage(messages.play, { mediaServerName: 'Jellyfin' });
+    return intl.formatMessage(messages.play, {
+      mediaServerName: ServerType.JELLYFIN,
+    });
   }
 
   function getAvailable4kMediaServerName() {
     if (settings.currentSettings.mediaServerType === MediaServerType.EMBY) {
-      return intl.formatMessage(messages.play, { mediaServerName: 'Emby' });
+      return intl.formatMessage(messages.play4k, {
+        mediaServerName: ServerType.EMBY,
+      });
     }
 
     if (settings.currentSettings.mediaServerType === MediaServerType.PLEX) {
-      return intl.formatMessage(messages.play4k, { mediaServerName: 'Plex' });
+      return intl.formatMessage(messages.play4k, {
+        mediaServerName: ServerType.PLEX,
+      });
     }
 
-    return intl.formatMessage(messages.play, { mediaServerName: 'Jellyfin' });
+    return intl.formatMessage(messages.play4k, {
+      mediaServerName: ServerType.JELLYFIN,
+    });
   }
 
   const onClickWatchlistBtn = async (): Promise<void> => {
