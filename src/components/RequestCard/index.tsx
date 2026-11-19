@@ -274,7 +274,12 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
       }
     } catch (e) {
       if (!axios.isAxiosError(e) || e.response?.status !== 404) {
-        addToast(intl.formatMessage(messages.failedremovemedia), {
+        const serverMessage =
+          axios.isAxiosError(e) && typeof e.response?.data?.message === 'string'
+            ? e.response.data.message
+            : undefined;
+
+        addToast(serverMessage ?? intl.formatMessage(messages.failedremovemedia), {
           autoDismiss: true,
           appearance: 'error',
         });

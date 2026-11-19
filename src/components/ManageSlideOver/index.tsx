@@ -151,7 +151,12 @@ const ManageSlideOver = ({
         );
       } catch (e) {
         if (!axios.isAxiosError(e) || e.response?.status !== 404) {
-          addToast(intl.formatMessage(messages.removemediaerror), {
+          const serverMessage =
+            axios.isAxiosError(e) && typeof e.response?.data?.message === 'string'
+              ? e.response.data.message
+              : undefined;
+
+          addToast(serverMessage ?? intl.formatMessage(messages.removemediaerror), {
             appearance: 'error',
             autoDismiss: true,
           });

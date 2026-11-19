@@ -367,10 +367,18 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
       }
     } catch (e) {
       if (!axios.isAxiosError(e) || e.response?.status !== 404) {
-        addToast(intl.formatMessage(messages.removemediaerror), {
-          autoDismiss: true,
-          appearance: 'error',
-        });
+        const serverMessage =
+          axios.isAxiosError(e) && typeof e.response?.data?.message === 'string'
+            ? e.response.data.message
+            : undefined;
+
+        addToast(
+          serverMessage ?? intl.formatMessage(messages.removemediaerror),
+          {
+            autoDismiss: true,
+            appearance: 'error',
+          }
+        );
         revalidateList();
         return;
       }

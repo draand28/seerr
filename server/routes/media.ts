@@ -29,10 +29,9 @@ const mediaRoutes = Router();
 const DELETE_HOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Returns the timestamp before which a newly available media must not be
- * deleted. Uses the last availability update as a proxy for "downloaded at".
- * shortcut: updatedAt moves on any edit, so this can over-hold; switch to a
- * dedicated availableAt column if exact windows matter.
+ * Fallback for the deletion hold when the arr server cannot report a file date.
+ * Uses the last availability update as a proxy for "downloaded at", which scans
+ * can bump, so it may over-hold. Prefer getFileAddedAt.
  */
 function getDeleteHoldUnlockAt(
   media: Media,
@@ -57,6 +56,67 @@ function getDeleteHoldUnlockAt(
   }
 
   return times.length ? Math.max(...times) + DELETE_HOLD_MS : undefined;
+}
+
+/**
+ * Returns the timestamp of the newest file for this movie or season, straight
+ * from the arr server. This is the accurate "downloaded at" that the deletion
+ * hold needs; updatedAt is only a fallback because scans bump it.
+ */
+async function getFileAddedAt(
+  media: Media,
+  is4k: boolean,
+  seasonNumber?: number
+): Promise<number | undefined> {
+  try {
+    const settings = getSettings();
+
+    if (media.mediaType === MediaType.MOVIE) {
+      const serviceId = is4k ? media.serviceId4k : media.serviceId;
+      const server =
+        settings.radarr.find((radarr) => radarr.id === serviceId) ??
+        settings.radarr.find(
+          (radarr) => radarr.isDefault && radarr.is4k === is4k
+        );
+      const externalId = is4k
+        ? media.externalServiceId4k
+        : media.externalServiceId;
+
+      if (!server || externalId === undefined || externalId === null) {
+        return undefined;
+      }
+
+      const radarr = new RadarrAPI({
+        apiKey: server.apiKey,
+        url: RadarrAPI.buildUrl(server, '/api/v3'),
+      });
+      const movie = await radarr.getMovie({ id: externalId });
+      const added = movie.movieFile?.dateAdded;
+
+      return added ? new Date(added).getTime() : undefined;
+    }
+
+    const found = await findSeriesInSonarr(media, is4k);
+
+    if (!found) {
+      return undefined;
+    }
+
+    const files = await found.sonarr.getEpisodeFiles(found.series.id);
+    const seasonFiles = files.filter(
+      (file) => seasonNumber === undefined || file.seasonNumber === seasonNumber
+    );
+
+    if (!seasonFiles.length) {
+      return undefined;
+    }
+
+    return Math.max(
+      ...seasonFiles.map((file) => new Date(file.dateAdded).getTime())
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -352,7 +412,10 @@ mediaRoutes.delete(
       }
 
       if (!req.user?.hasPermission(Permission.MANAGE_REQUESTS)) {
-        const unlockAt = getDeleteHoldUnlockAt(media, is4k);
+        const fileAddedAt = await getFileAddedAt(media, is4k);
+        const unlockAt = fileAddedAt
+          ? fileAddedAt + DELETE_HOLD_MS
+          : getDeleteHoldUnlockAt(media, is4k);
 
         if (unlockAt && Date.now() < unlockAt) {
           return next({
@@ -635,7 +698,13 @@ mediaRoutes.delete(
           (existingSeason[statusField] === MediaStatus.AVAILABLE ||
             existingSeason[statusField] === MediaStatus.PARTIALLY_AVAILABLE)
         ) {
-          const unlockAt = existingSeason.updatedAt.getTime() + DELETE_HOLD_MS;
+          const fileAddedAt = await getFileAddedAt(
+            media,
+            is4k,
+            seasonNumber
+          );
+          const unlockAt =
+            (fileAddedAt ?? existingSeason.updatedAt.getTime()) + DELETE_HOLD_MS;
 
           if (Date.now() < unlockAt) {
             return next({
