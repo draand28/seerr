@@ -229,8 +229,12 @@ const CollectionRequestModal = ({
         </span>,
         { appearance: 'success', autoDismiss: true }
       );
-    } catch {
-      addToast(intl.formatMessage(messages.requesterror), {
+    } catch (e) {
+      const serverMessage =
+        axios.isAxiosError(e) && typeof e.response?.data?.message === 'string'
+          ? e.response.data.message
+          : undefined;
+      addToast(serverMessage ?? intl.formatMessage(messages.requesterror), {
         appearance: 'error',
         autoDismiss: true,
       });
