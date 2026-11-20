@@ -106,7 +106,6 @@ requestRoutes.get<Record<string, unknown>, RequestResultsResponse>(
             MediaStatus.PROCESSING,
             MediaStatus.PARTIALLY_AVAILABLE,
             MediaStatus.AVAILABLE,
-            MediaStatus.DELETED,
           ];
       }
 

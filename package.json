@@ -1,6 +1,6 @@
 {
   "name": "seerr",
-  "version": "3.5.2-fork.4",
+  "version": "3.5.2-fork.5",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "scripts": {
